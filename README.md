@@ -11,7 +11,7 @@ Little Endian Byte Order --> Most significant byte first
 Monday's 11-12
 Wednesday's 11-12
 
-Varnit Create, Terminate, New, Restart
-Kelsey Insert, Get, Update, Remove Records
-Alex Table Functions
-James Page Buffer and purge
+Varnit Create, Terminate, New, Restart  
+Kelsey Insert, Get, Update, Remove Records  
+Alex Table Functions  
+James Page Buffer and purge  
