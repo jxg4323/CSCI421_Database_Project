@@ -11,6 +11,7 @@ Professor: Scott Johnson
 
 int page_size;  // Page size should be a variable stored
 char * page_buffer;
+char * db_location;
 // beginning of file (first byte = page id)
 
 typedef struct table_info{
