@@ -21,7 +21,18 @@ Professor: Scott Johnson
  * @return the result of either the restart_database or new_database function calls.
  */
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
-
+	if(restart){
+		return restart_database(db_loc);
+	}else{
+		int com_len = strlen(db_loc) + 7;
+		char *com = (char *)malloc(com_len*sizeof(char));
+		strcat(com,"rm -r ");
+		strcat(com, db_loc);
+		strcat(com, "*");
+		system(com);
+		free(com);
+		return new_database(db_loc, page_size, buffer_size);
+	}
 }
 
 /*
@@ -30,7 +41,13 @@ int create_database( char * db_loc, int page_size, int buffer_size, bool restart
  * @return 0 if the database is restarted successfully, otherwise -1;
  */
 int restart_database( char * db_loc ){
-
+	db_info* config = get_db_config(db_loc);
+	if(config == NULL){
+		return -1;
+	}else{
+		free_config( config );
+		return 0;
+	}
 }
 
 /*
@@ -42,7 +59,92 @@ int restart_database( char * db_loc ){
  * @return 0 if the database is started successfully, otherwise -1;
  */
 int new_database( char * db_loc, int page_size, int buffer_size ){
+	// need to store database info into file
+	FILE *dbFile;
+	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	strcat(config_file, db_loc);
+	strcat(config_file, DATABASE_CONFIG_FILE);
 
+	dbFile = fopen(config_file, "w"); 
+	if(dbFile == NULL){
+    	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
+    	return -1;
+    }
+    char * empty_buffer = (char *)malloc(MIN_ALLOC*sizeof(char));
+    fwrite(&(page_size), sizeof(int), 1, dbFile);
+    fwrite(&(buffer_size), sizeof(int), 1, dbFile);
+    fwrite(db_loc, sizeof(char), MIN_ALLOC, dbFile);
+    fwrite(empty_buffer, sizeof(char), buffer_size, dbFile);
+
+    free(db_loc);
+    free(empty_buffer);
+	fclose(dbFile);
+	return 0;
+}
+
+/*
+ * Get database config info and page buffer and place into volatile memory.
+ */
+db_info *get_db_config( char * db_loc ){
+	FILE *dbFile;
+	db_config db_info = NULL;
+	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	strcat(config_file, db_loc);
+	strcat(config_file, DATABASE_CONFIG_FILE);
+
+	dbFile = fopen(config_file, "r"); 
+	if(dbFile == NULL){
+    	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
+    	return NULL;
+    }
+    fread(&(db_info.page_size),sizeof(int),1,dbFile);
+    fread(&(db_info.buffer_size),sizeof(int),1,dbFile);
+    //allocate memory for buffer and file location
+    db_info.db_location = (char *)malloc(MIN_ALLOC*sizeof(char)); // file location can't be more than 50 chars long
+    db_info.page_buffer = (char *)malloc((db_info.buffer_size)*sizeof(char)); 
+    fread(&(db_info.db_location), sizeof(char), MIN_ALLOC, dbFile);
+    fread(&(db_info.page_buffer), sizeof(char), db_info.buffer_size, dbFile);
+    fclose(dbFile);
+    return db_info;
+}
+
+/*
+ * Update the buffer in database config.
+ * Return 0 with success and -1 for failure.
+ */
+int update_db_config( char * db_loc, char * buffer ){
+	// buffer size should NEVER change
+	db_info *config = get_db_config(db_loc);
+	config->page_buffer = buffer;
+
+	FILE *dbFile;
+	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	strcat(config_file, db_loc);
+	strcat(config_file, DATABASE_CONFIG_FILE);
+
+	dbFile = fopen(config_file, "w"); 
+	if(dbFile == NULL){
+    	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
+    	return -1;
+    }
+    fwrite(&(config->page_size), sizeof(int), 1, dbFile);
+    fwrite(&(config->buffer_size), sizeof(int), 1, dbFile);
+    fwrite(config->db_loc, sizeof(char), MIN_ALLOC, dbFile);
+    fwrite(config->page_buffer, sizeof(char), buffer_size, dbFile);
+
+    free(db_loc);
+    free(page_buffer);
+	fclose(dbFile);
+	return 0;
+}
+
+void free_config( db_info *config ){
+	free(config->db_location);
+	free(config->page_buffer);
+	free(config);
 }
 
 /*
@@ -100,7 +202,7 @@ void init_table_pages(int arr_size, int t_id, table_page_locs * t_data){
  * If the lookup table already exists then read the current information from
  * the lookup table into volatile memory for manipulation.
  */
-lookup_table *read_lookup_file(char* file_loc){
+lookup_table *read_lookup_file(char* db_loc){
 	int t_count = 0;
 	lookup_table *table = NULL;
 	ssize_t read = 0;
@@ -108,9 +210,14 @@ lookup_table *read_lookup_file(char* file_loc){
 	int table_indx = 0;
 	FILE* pFile;
 
-	pFile = fopen(file_loc, "r"); 
+	int file_loc_len = strlen(db_loc) + LOOKUP_FILE_NAME_LEN;
+	char * lookup_file = (char *)malloc(file_loc_len*sizeof(char));
+	strcat(lookup_file, db_loc);
+	strcat(lookup_file, LOOKUP_TABLE_FILE);
+
+	pFile = fopen(lookup_file, "r"); 
 	if(pFile == NULL){
-    	fprintf(stderr,"ERROR: invalid lookup file %s\n",file_loc);
+    	fprintf(stderr,"ERROR: invalid lookup file %s\n",lookup_file);
     	return false;
     }
 
@@ -145,13 +252,17 @@ lookup_table *read_lookup_file(char* file_loc){
 /*
  * Save lookup table information to the given file location.
  */ 
-int write_lookup_table(lookup_table* lookup_table, char* file_loc){
+int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 	// wrtie the lookup table to a file marker lookup
 	FILE* wFile;
+	int file_loc_len = strlen(db_loc) + LOOKUP_FILE_NAME_LEN;
+	char * lookup_file = (char *)malloc(file_loc_len*sizeof(char));
+	strcat(lookup_file, db_loc);
+	strcat(lookup_file, LOOKUP_TABLE_FILE);
 
-	wFile = fopen(file_loc, "w");
+	wFile = fopen(lookup_file, "w");
 	if(wFile == NULL){
-		fprintf(stderr, "ERROR: invalid lookup file %s\n", file_loc);
+		fprintf(stderr, "ERROR: invalid lookup file %s\n", db_loc);
 		return false;
 	}
 	fwrite(&(lookup_table->table_count), sizeof(int), 1, wFile);
@@ -198,4 +309,17 @@ table_page_locs *get_table_info(lookup_table* l_table, int table_id){
 	if(!success){
 		return NULL;
 	}
+}
+
+/*
+ * Free memory used by lookup table
+ */
+void free_lookup_table(lookup_table* l_table){
+	for( int i = 0; i < l_table->table_count; i++ ){
+		int b_size = (l_table->table_data[i]).bin_size;
+		for( int j = 0; j < b_size; j++ ){
+			free( (l_table->table_data[i])[j] );
+		}
+	}
+	free( l_table->table_data );
 }
