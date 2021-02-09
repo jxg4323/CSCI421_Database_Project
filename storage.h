@@ -49,11 +49,14 @@ typedef struct lookup_table{
 } lookup_table;
 
 
-/*
- * Initialize the lookup table memory.
- * Return the struct pointer for the lookup table.
- */
-table_pages *initialize_table_pages();
+void print_lookup_table(lookup_table *table);
+char *table_bin_string(table_page_locs *table_data);
+lookup_table *initialize_lookup_table(int num_of_tables);
+void init_table_pages(int arr_size, int t_id, table_page_locs * t_data);
+lookup_table *read_lookup_file(char* file_loc);
+int write_lookup_table(lookup_table* lookup_table, char* file_loc);
+lookup_table *update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte);
+table_page_locs *get_table_info(lookup_table* l_table, int table_id);
 
 
 #endif
