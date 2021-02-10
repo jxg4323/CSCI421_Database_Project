@@ -16,8 +16,8 @@ Professor: Scott Johnson
 #define BASE_TABLE_PAGES_SIZE 20
 #define MIN_ALLOC 50
 #define LOOKUP_TUPLE_SIZE 3
-#define DATABASE_CONFIG_FILE 'database_config'
-#define LOOKUP_TABLE_FILE 'lookup_file'
+#define DATABASE_CONFIG_FILE "database_config"
+#define LOOKUP_TABLE_FILE "lookup_file"
 #define DATABASE_FILE_NAME_LEN 15
 #define LOOKUP_FILE_NAME_LEN 11
 
@@ -42,9 +42,10 @@ typedef struct db_config{
 	char * page_buffer;
 } db_config;
 
-db_info *get_db_config( char * db_loc );
+db_config *get_db_config( char * db_loc );
 int update_db_config( char * db_loc, char * buffer );
-void free_config( db_info *config );
+void pretty_print_db_config( db_config *config);
+void free_config( db_config *config );
 
 // Lookup table 
 
@@ -57,18 +58,19 @@ typedef struct table_page_locs{
 
 typedef struct lookup_table{
 	int table_count;  // Number of tables in lookup file
-	table_page_locs* table_data;  // array of table_page_locs
+	table_pages* table_data;  // array of table_pages
 } lookup_table;
 
-void print_lookup_table(lookup_table *table);
-char *table_bin_string(table_page_locs *table_data);
+char *table_bin_string(table_pages *table_data);
 lookup_table *initialize_lookup_table(int num_of_tables);
-void init_table_pages(int arr_size, int t_id, table_page_locs * t_data);
+void init_table_pages(int arr_size, int t_id, table_pages * t_data);
 lookup_table *read_lookup_file(char* db_loc);
 int write_lookup_table(lookup_table* lookup_table, char* db_loc);
 lookup_table *update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte);
-table_page_locs *get_table_info(lookup_table* l_table, int table_id);
+table_pages *get_table_info(lookup_table* l_table, int table_id);
 void free_lookup_table(lookup_table* l_table);
+void free_table_pages(table_pages* t_data);
+void print_lookup_table(lookup_table *table);
 
 
 #endif
