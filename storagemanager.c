@@ -7,7 +7,7 @@ Professor: Scott Johnson
 #include "storage.h"
 
 
-/*
+/* 
  * create or restarts an instance of the database at the 
  * provided database location.
  * If restart is true this function will call the restart_database function.
@@ -35,13 +35,15 @@ int create_database( char * db_loc, int page_size, int buffer_size, bool restart
 	}
 }
 
-/*
+/* 
  * This function will try to restart the database at the provided database location.
  * @param db_loc - the absolute path for the database to restart.
  * @return 0 if the database is restarted successfully, otherwise -1;
  */
 int restart_database( char * db_loc ){
-	db_config* config = get_db_config(db_loc);
+	int result;
+	db_config* config = (db_config *)malloc(sizeof(db_config));
+	result = get_db_config(db_loc, config);  
 	if(config == NULL){
 		return -1;
 	}else{
@@ -50,7 +52,7 @@ int restart_database( char * db_loc ){
 	}
 }
 
-/*
+/* 
  * create an instance of the database at the provided database location.
  * @param db_loc - the absolute path for the database.
  * @param page_size - the pages size for the database.
@@ -63,12 +65,13 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
 	FILE *dbFile;
 	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
 	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	memset(config_file, 0, db_loc_len*sizeof(char));
 	strcat(config_file, db_loc);
 	strcat(config_file, DATABASE_CONFIG_FILE);
 
-	dbFile = fopen(config_file, "w"); 
+	dbFile = fopen(config_file, "wb"); 
 	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
+    	fprintf(stderr,"ERROR: invalid database config file location %s\n",config_file);
     	return -1;
     }
     char * empty_buffer = (char *)malloc(buffer_size*sizeof(char));
@@ -77,39 +80,41 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
     fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
     fwrite(empty_buffer, sizeof(char), buffer_size, dbFile);
 
-    free(db_loc);
     free(empty_buffer);
 	fclose(dbFile);
 	return 0;
 }
 
-/*
+/* 
+ * Allocate memory for the config structure before calling.
  * Get database config info and page buffer and place into volatile memory.
  */
-db_config *get_db_config( char * db_loc ){
+int get_db_config( char * db_loc, db_config* config ){
 	FILE *dbFile;
-	db_config config;
 	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
 	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	config->page_buffer = (char *)malloc(config->buffer_size*sizeof(char));
+
+	memset(config_file, 0, db_loc_len*sizeof(char));
 	strcat(config_file, db_loc);
 	strcat(config_file, DATABASE_CONFIG_FILE);
 
-	dbFile = fopen(config_file, "r"); 
+	dbFile = fopen(config_file, "rb"); 
 	if(dbFile == NULL){
     	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
-    	return NULL;
+    	return -1;
     }
-    fread(&(config.page_size),sizeof(int),1,dbFile);
-    fread(&(config.buffer_size),sizeof(int),1,dbFile);
+    fread(&(config->page_size),sizeof(int),1,dbFile);
+    fread(&(config->buffer_size),sizeof(int),1,dbFile);
     //allocate memory for buffer and file location
-    config.db_location = (char *)malloc(db_loc_len*sizeof(char)); // file location can't be more than 50 chars long
-    config.page_buffer = (char *)malloc((config.buffer_size)*sizeof(char)); 
-    fread(&(config.db_location), sizeof(char), db_loc_len, dbFile);
-    fread(&(config.page_buffer), sizeof(char), config.buffer_size, dbFile);
+    config->db_location = (char *)malloc(db_loc_len*sizeof(char));
+    config->page_buffer = (char *)malloc((config->buffer_size)*sizeof(char)); 
+    fread(config->db_location, sizeof(char), db_loc_len, dbFile);
+    fread(config->page_buffer, sizeof(char), config->buffer_size, dbFile);
 
     free( config_file );
     fclose(dbFile);
-    return &config;
+    return 0;
 }
 
 /*
@@ -118,16 +123,22 @@ db_config *get_db_config( char * db_loc ){
  */
 int update_db_config( char * db_loc, char * buffer ){
 	// buffer size should NEVER change
-	db_config *config = get_db_config(db_loc);
-	config->page_buffer = buffer;
-
 	FILE *dbFile;
+	int result;
 	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+	int buf_size = strlen(buffer);
+	db_config* config = (db_config *)malloc(sizeof(db_config));
+	
+	result = get_db_config(db_loc, config); 
+	strcpy(config->page_buffer, buffer);
+
+
 	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	memset(config_file, 0, db_loc_len*sizeof(char));
 	strcat(config_file, db_loc);
 	strcat(config_file, DATABASE_CONFIG_FILE);
 
-	dbFile = fopen(config_file, "w"); 
+	dbFile = fopen(config_file, "wb"); 
 	if(dbFile == NULL){
     	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
     	return -1;
@@ -148,7 +159,7 @@ int update_db_config( char * db_loc, char * buffer ){
  */
 void free_config( db_config *config ){
 	free(config->db_location);
-	free(config->page_buffer);
+	free(config->page_buffer);  // ERROR: invalid pointer
 	free(config);
 }
 
@@ -190,11 +201,12 @@ char *table_bin_string(table_pages *table_data){
 
 /*
  * Allocate initial memory for lookup table structure.
+ * Return 0 with success and -1 with failure.
+ * TODO: rework not to generate the structure pointer locally but have it passed
  */
-lookup_table *initialize_lookup_table(int num_of_tables){ 
-	lookup_table table; // TODO: not sure if I need to allocate memory for the entire struct
-	table.table_data = (table_pages *)malloc(num_of_tables*(sizeof(table_pages)));
-	return &table;
+int initialize_lookup_table(int num_of_tables, lookup_table* table){ 
+	table->table_data = (table_pages *)malloc(num_of_tables*(sizeof(table_pages)));
+	return 0;
 }
 
 /*
@@ -216,7 +228,7 @@ void init_table_pages(int arr_size, int t_id, table_pages * t_data){
  */
 lookup_table *read_lookup_file(char* db_loc){
 	int t_count = 0;
-	lookup_table *table = NULL;
+	lookup_table *table = (lookup_table *)malloc(sizeof(lookup_table));
 	ssize_t read = 0;
 	size_t len = 0;
 	int table_indx = 0;
@@ -224,17 +236,18 @@ lookup_table *read_lookup_file(char* db_loc){
 
 	int file_loc_len = strlen(db_loc) + LOOKUP_FILE_NAME_LEN;
 	char * lookup_file = (char *)malloc(file_loc_len*sizeof(char));
+	memset(lookup_file, 0, file_loc_len*sizeof(char));
 	strcat(lookup_file, db_loc);
 	strcat(lookup_file, LOOKUP_TABLE_FILE);
 
-	pFile = fopen(lookup_file, "r"); 
+	pFile = fopen(lookup_file, "rb"); 
 	if(pFile == NULL){
     	fprintf(stderr,"ERROR: invalid lookup file %s\n",lookup_file);
     	return false;
     }
 
-    fread(&t_count, sizeof(int),1,pFile); // get table count
-    table = initialize_lookup_table(t_count);
+    fread(&t_count, sizeof(int), 1, pFile); // get table count
+    initialize_lookup_table(t_count, table);  //TODO: malloc memory for struct point first then call
 	while( 1 ){
 		// cast first part of the line to the lookup_info struct to get bin & table info
 		int t_id = -1;
@@ -269,10 +282,11 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 	FILE* wFile;
 	int file_loc_len = strlen(db_loc) + LOOKUP_FILE_NAME_LEN;
 	char * lookup_file = (char *)malloc(file_loc_len*sizeof(char));
+	memset(lookup_file, 0, file_loc_len*sizeof(char));
 	strcat(lookup_file, db_loc);
 	strcat(lookup_file, LOOKUP_TABLE_FILE);
 
-	wFile = fopen(lookup_file, "w");
+	wFile = fopen(lookup_file, "wb");
 	if(wFile == NULL){
 		fprintf(stderr, "ERROR: invalid lookup file %s\n", db_loc);
 		return false;
@@ -298,28 +312,29 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
  */
 lookup_table *update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte){
 	// update lookup table
-	table_pages *t_info = get_table_info(l_table, table_id);
-	t_info->byte_info = (int **)realloc(t_info->byte_info, (t_info->bin_size+1)*sizeof(int*));
+	int table_info_loc = get_table_info(l_table, table_id);
+	(l_table->table_data[table_info_loc]).byte_info = (int **)realloc((l_table->table_data[table_info_loc]).byte_info, ((l_table->table_data[table_info_loc]).bin_size+1)*sizeof(int*));
 	int* tmp = calloc(LOOKUP_TUPLE_SIZE, sizeof(int));
-	(t_info->byte_info)[t_info->bin_size] = tmp;
-	t_info->bin_size++;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size] = tmp;
+	(l_table->table_data[table_info_loc]).bin_size++;
 }
 
 /*
  * Based on the given table id do a simple linear search for the id
  *
- * Return info for the table page locations or NULL if not found.
+ * Return location of table information in lookup table or -1 if not found.
+ * TODO: rework not to generate the structure pointer locally but have it passed
  */
-table_pages *get_table_info(lookup_table* l_table, int table_id){
+int get_table_info(lookup_table* l_table, int table_id){
 	bool success = false;
 	for( int i = 0; i < l_table->table_count; i++ ){
 		if( (l_table->table_data)[i].table_id == table_id ){
 			success = true;
-			return &((l_table->table_data)[i]);
+			return i;
 		}
 	}
 	if(!success){
-		return NULL;
+		return -1;
 	}
 }
 
@@ -329,8 +344,7 @@ table_pages *get_table_info(lookup_table* l_table, int table_id){
 void free_lookup_table(lookup_table* l_table){
 	for( int i = 0; i < l_table->table_count; i++ ){
 		int b_size = (l_table->table_data[i]).bin_size;
-		free_table_pages( &(l_table->table_data) );
-		//TODO: insert call to free the byte info array in the table_pages struct
+		free_table_pages( l_table->table_data );
 	}
 	free( l_table->table_data );
 }
@@ -353,14 +367,29 @@ void free_table_pages(table_pages* t_data){
 int main(int argc, char const *argv[])
 {
 	// needed to start
-	char db_path[33] = "~/Courses/CSCI421/Project/TestDb/";
+	char db_path[] = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
 	int page_size = 25;
 	int buffer_size = 50;
 	bool restart_flag = false;
 
+	printf("Database Path %s\n", db_path);
+	printf("%s\n", DATABASE_CONFIG_FILE);
+
 	// Database config testing
 	int result;
 	result = create_database(db_path, page_size, buffer_size, restart_flag);
+
+	char * new_buf = (char *)malloc(buffer_size*sizeof(char));
+	new_buf = "bleh blah boop beep";
+	update_db_config( db_path, new_buf ); // Good
+
+	db_config *test_get = (db_config *)malloc(sizeof(db_config));
+	get_db_config( db_path, test_get );  // Good
+	pretty_print_db_config( test_get );
+	
+	// Lookup Table Testing
+	
+
 
 	return 0;
 }
