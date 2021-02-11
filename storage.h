@@ -62,12 +62,12 @@ typedef struct lookup_table{
 	table_pages* table_data;  // array of table_pages
 } lookup_table;
 
-char *table_bin_string(table_pages *table_data);
+void print_table_bin(table_pages *table_data);
 int initialize_lookup_table(int num_of_tables, lookup_table* table);
 void init_table_pages(int arr_size, int t_id, table_pages * t_data);
-lookup_table *read_lookup_file(char* db_loc);
+int read_lookup_file(char* db_loc, lookup_table* l_table);
 int write_lookup_table(lookup_table* lookup_table, char* db_loc);
-lookup_table *update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte);
+int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte);
 int get_table_info(lookup_table* l_table, int table_id);
 void free_lookup_table(lookup_table* l_table);
 void free_table_pages(table_pages* t_data);

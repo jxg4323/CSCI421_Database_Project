@@ -176,27 +176,26 @@ void pretty_print_db_config( db_config *config){
 void print_lookup_table(lookup_table *table){
 	printf("Table count: %d\n",table->table_count);
 	for(int i = 0; i < table->table_count; i++){
-		char * t_str = table_bin_string(table->table_data);
-		printf("%s\n", t_str);
+		print_table_bin( &(table->table_data[i]) );
 	}
 }
 
 /*
  * String interpretation of the table storeage locations.
  */
-char *table_bin_string(table_pages *table_data){
-	char * string = (char *)malloc(table_data->bin_size*sizeof(char));
-	sprintf(string, "Table id: %d, bin size: %d, page info: {",table_data->table_id,table_data->bin_size);
+void print_table_bin(table_pages *table_data){
+	printf("Table id: %d, bin size: %d, page info: {",table_data->table_id,table_data->bin_size);
 	for(int i = 0; i < table_data->bin_size; i++){
 		int page_id = (table_data->byte_info)[i][0];
 		int s_byte = (table_data->byte_info)[i][1];
 		int e_byte = (table_data->byte_info)[i][2];
-		char tmp[44]; // space for 3 ints and 8 chars
-		sprintf(tmp, "[%d, %d, %d], ", page_id, s_byte, e_byte);
-		strcat(string, tmp);  
+		if( i == (table_data->bin_size-1) ){
+			printf("[%d: %d, %d] ", page_id, s_byte, e_byte);
+		}else{
+			printf("[%d: %d, %d], ", page_id, s_byte, e_byte);
+		}
 	}
-	strcat(string, "}");
-	return string;
+	printf("}\n");
 }
 
 /*
@@ -205,6 +204,7 @@ char *table_bin_string(table_pages *table_data){
  * TODO: rework not to generate the structure pointer locally but have it passed
  */
 int initialize_lookup_table(int num_of_tables, lookup_table* table){ 
+	table->table_count = num_of_tables;
 	table->table_data = (table_pages *)malloc(num_of_tables*(sizeof(table_pages)));
 	return 0;
 }
@@ -225,10 +225,10 @@ void init_table_pages(int arr_size, int t_id, table_pages * t_data){
 /*
  * If the lookup table already exists then read the current information from
  * the lookup table into volatile memory for manipulation.
+ * Return 0 with success and -1 with failure.
  */
-lookup_table *read_lookup_file(char* db_loc){
+int read_lookup_file(char* db_loc, lookup_table* table){
 	int t_count = 0;
-	lookup_table *table = (lookup_table *)malloc(sizeof(lookup_table));
 	ssize_t read = 0;
 	size_t len = 0;
 	int table_indx = 0;
@@ -242,12 +242,12 @@ lookup_table *read_lookup_file(char* db_loc){
 
 	pFile = fopen(lookup_file, "rb"); 
 	if(pFile == NULL){
-    	fprintf(stderr,"ERROR: invalid lookup file %s\n",lookup_file);
-    	return false;
+    	fprintf(stderr,"ERROR: read_lookup_file, invalid lookup file %s\n",lookup_file);
+    	return -1;
     }
 
-    fread(&t_count, sizeof(int), 1, pFile); // get table count
-    initialize_lookup_table(t_count, table);  //TODO: malloc memory for struct point first then call
+    fread(&(t_count), sizeof(int), 1, pFile); // get table count
+    initialize_lookup_table( t_count, table );
 	while( 1 ){
 		// cast first part of the line to the lookup_info struct to get bin & table info
 		int t_id = -1;
@@ -265,17 +265,18 @@ lookup_table *read_lookup_file(char* db_loc){
 		}
 		// add this struct pointer to the list of struct pointers (list of table information)
 		// next line
-		if(feof(pFile)){ //read until end of file character
+		if(feof(pFile) || table_indx == (t_count-1)){ //read until end of file character or there aren't any more tables
 			break;
 		}
 		table_indx++;
 	}
 	fclose( pFile );
-	return table;
+	return 0;
 }
 
 /*
  * Save lookup table information to the given file location.
+ * Return 0 for success and -1 for failure
  */ 
 int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 	// wrtie the lookup table to a file marker lookup
@@ -288,13 +289,15 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 
 	wFile = fopen(lookup_file, "wb");
 	if(wFile == NULL){
-		fprintf(stderr, "ERROR: invalid lookup file %s\n", db_loc);
+		fprintf(stderr, "ERROR: write_lookup_table, invalid lookup file %s\n", db_loc);
 		return false;
 	}
 	fwrite(&(lookup_table->table_count), sizeof(int), 1, wFile);
 	for( int i = 0; i < lookup_table->table_count; i++ ){
 		int t_id = ((lookup_table->table_data)[i]).table_id;
 		int b_size = ((lookup_table->table_data)[i]).bin_size;
+		fwrite(&t_id, sizeof(int), 1, wFile);
+		fwrite(&b_size, sizeof(int), 1, wFile);
 		for( int j = 0; j < b_size; j++ ){
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][0]),sizeof(int),1,wFile);
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][1]),sizeof(int),1,wFile);
@@ -302,28 +305,31 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 		}
 	}
 	fclose(wFile);
-	// return 0 for success and -1 for failure
 	return 0;
 }
 
 /*
  * Get the table info structure from the lookup table and add a new memory info
  * section to the bin.
+ * Return 0 with success and -1 with failure.
  */
-lookup_table *update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte){
+int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte){
 	// update lookup table
 	int table_info_loc = get_table_info(l_table, table_id);
 	(l_table->table_data[table_info_loc]).byte_info = (int **)realloc((l_table->table_data[table_info_loc]).byte_info, ((l_table->table_data[table_info_loc]).bin_size+1)*sizeof(int*));
 	int* tmp = calloc(LOOKUP_TUPLE_SIZE, sizeof(int));
 	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size] = tmp;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][0] = page_id;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][1] = s_byte;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][2] = e_byte;
 	(l_table->table_data[table_info_loc]).bin_size++;
+	return 0;
 }
 
 /*
  * Based on the given table id do a simple linear search for the id
  *
  * Return location of table information in lookup table or -1 if not found.
- * TODO: rework not to generate the structure pointer locally but have it passed
  */
 int get_table_info(lookup_table* l_table, int table_id){
 	bool success = false;
@@ -344,7 +350,7 @@ int get_table_info(lookup_table* l_table, int table_id){
 void free_lookup_table(lookup_table* l_table){
 	for( int i = 0; i < l_table->table_count; i++ ){
 		int b_size = (l_table->table_data[i]).bin_size;
-		free_table_pages( l_table->table_data );
+		free_table_pages( &(l_table->table_data[i]) );
 	}
 	free( l_table->table_data );
 }
@@ -388,7 +394,36 @@ int main(int argc, char const *argv[])
 	pretty_print_db_config( test_get );
 	
 	// Lookup Table Testing
-	
+	int table_count = 2;
+	int arr_size = 5;
+	// Create some test data
+	if(restart_flag){
+		lookup_table * l_table = (lookup_table *)malloc(sizeof(l_table));
+		result = initialize_lookup_table( table_count, l_table );
+		for( int i = 0; i < table_count; i++ ){
+			init_table_pages(arr_size, i, &((l_table->table_data[i])));
+			for(int j = 0; j < arr_size; j++ ){
+				((l_table->table_data)[i]).byte_info[j][0] = j+1; 
+				((l_table->table_data)[i]).byte_info[j][1] = j+2; 
+				((l_table->table_data)[i]).byte_info[j][2] = j+3; 
+			}
+		}
+		print_lookup_table( l_table );
+		printf("---------------\n");
+		update_lookup_table(l_table, 1, 3, 13, 56);
+		print_lookup_table( l_table );
+		printf("---------------\n");
+		
+		write_lookup_table( l_table, db_path );
+	}else{
+		// Read in lookup File
+		lookup_table * l_table = (lookup_table *)malloc(sizeof(l_table));
+		read_lookup_file( db_path, l_table );
+
+		print_lookup_table( l_table );
+
+		free_lookup_table( l_table );
+	}
 
 
 	return 0;
