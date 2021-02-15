@@ -44,7 +44,6 @@ void print_table_bin(table_pages *table_data){
 /*
  * Allocate initial memory for lookup table structure.
  * Return 0 with success and -1 with failure.
- * TODO: rework not to generate the structure pointer locally but have it passed
  */
 int initialize_lookup_table(int num_of_tables, lookup_table* table){ 
 	table->table_count = num_of_tables;
@@ -147,6 +146,7 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][2]),sizeof(int),1,wFile);
 		}
 	}
+	free( lookup_file );
 	fclose(wFile);
 	return 0;
 }
@@ -185,6 +185,13 @@ int get_table_info(lookup_table* l_table, int table_id){
 	if(!success){
 		return -1;
 	}
+}
+
+/*
+ * Delete table information from l_table
+ */
+int delete_lookup_table(){
+
 }
 
 /*

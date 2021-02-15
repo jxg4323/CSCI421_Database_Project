@@ -22,6 +22,8 @@ Professor: Scott Johnson
  * @return the result of either the restart_database or new_database function calls.
  */
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
+	allocate_db_data(page_size, buffer_size, db_loc);
+	table_l = (lookup_table *)malloc(sizeof(lookup_table));
 	if(restart){
 		return restart_database(db_loc);
 	}else{
@@ -42,13 +44,15 @@ int create_database( char * db_loc, int page_size, int buffer_size, bool restart
  * @return 0 if the database is restarted successfully, otherwise -1;
  */
 int restart_database( char * db_loc ){
-	int result;
-	db_config* config = (db_config *)malloc(sizeof(db_config));
-	result = get_db_config(db_loc, config);  
-	if(config == NULL){
+	int db_result = 0;
+	int lookup_result = 0;
+	db_result = get_db_config(db_loc, db_data);  
+	lookup_result = read_lookup_file(db_loc, table_l);
+	if(lookup_result == -1 || lookup_result == -1){
+		free( table_l );
+		free_config( db_data );
 		return -1;
 	}else{
-		free_config( config );
 		return 0;
 	}
 }
@@ -62,7 +66,7 @@ int restart_database( char * db_loc ){
  * @return 0 if the database is started successfully, otherwise -1;
  */
 int new_database( char * db_loc, int page_size, int buffer_size ){
-	// need to store database info into file
+	// need to store database info into file --> the allocate sets new database
 	FILE *dbFile;
 	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
 	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
@@ -72,7 +76,8 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
 
 	dbFile = fopen(config_file, "wb"); 
 	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: invalid database config file location %s\n",config_file);
+    	fprintf(stderr,"ERROR: new_database invalid database config file location %s\n",config_file);
+    	free( db_data );
     	return -1;
     }
     char * empty_buffer = (char *)malloc(buffer_size*sizeof(char));
@@ -80,10 +85,47 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
     fwrite(&(buffer_size), sizeof(int), 1, dbFile);
     fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
     fwrite(empty_buffer, sizeof(char), buffer_size, dbFile);
+    // initialize base values for lookup table
+    initialize_lookup_table(MIN_TABLE_COUNT, table_l);
+    for(int t_id = 0; t_id < MIN_TABLE_COUNT; t_id++){
+    	init_table_pages(MIN_BIN_SIZE, t_id, &(table_l->table_data[t_id]));
+    }
+    db_data->page_size = page_size;
+    db_data->buffer_size = buffer_size;
+    strcpy(db_data->db_location, db_loc);
 
     free(empty_buffer);
+    free(config_file);
 	fclose(dbFile);
 	return 0;
+}
+
+/*
+ * Safely shutdown storage manager. 
+ */
+int terminate_database(){
+	// get database config struct
+	// confirm database config file has been writen
+	update_db_config( db_data->db_location, db_data->page_buffer );
+	// get lookup table & confirm written
+	write_lookup_table( table_l, db_data->db_location );
+	// free used memory and return
+	free_lookup_table( table_l );
+	free_config( db_data );
+}
+
+/*
+ * Allocate local db_config data for use for storagemanager.c
+ */
+int allocate_db_data(int page_size, int buf_size, char *db_loc){
+	db_data = (db_config *)malloc(sizeof(db_config));
+	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+	db_data->page_size = page_size;
+    db_data->buffer_size = buf_size;
+    db_data->db_location = (char *)malloc(db_loc_len*sizeof(char));
+	db_data->page_buffer = (char *)malloc(buf_size*sizeof(char));
+	memset(db_data->db_location, 0, db_loc_len*sizeof(char));
+	memset(db_data->page_buffer, 0, buf_size*sizeof(char));
 }
 
 /* 
@@ -94,7 +136,6 @@ int get_db_config( char * db_loc, db_config* config ){
 	FILE *dbFile;
 	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
 	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
-	config->page_buffer = (char *)malloc(config->buffer_size*sizeof(char));
 
 	memset(config_file, 0, db_loc_len*sizeof(char));
 	strcat(config_file, db_loc);
@@ -102,7 +143,7 @@ int get_db_config( char * db_loc, db_config* config ){
 
 	dbFile = fopen(config_file, "rb"); 
 	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
+    	fprintf(stderr,"ERROR: get_db_config invalid database config file %s\n",db_loc);
     	return -1;
     }
     fread(&(config->page_size),sizeof(int),1,dbFile);
@@ -128,10 +169,8 @@ int update_db_config( char * db_loc, char * buffer ){
 	int result;
 	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
 	int buf_size = strlen(buffer);
-	db_config* config = (db_config *)malloc(sizeof(db_config));
 	
-	result = get_db_config(db_loc, config); 
-	strcpy(config->page_buffer, buffer);
+	strcpy(db_data->page_buffer, buffer);
 
 
 	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
@@ -141,15 +180,14 @@ int update_db_config( char * db_loc, char * buffer ){
 
 	dbFile = fopen(config_file, "wb"); 
 	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: invalid database config file %s\n",db_loc);
+    	fprintf(stderr,"ERROR: update_db_config invalid database config file %s\n",db_loc);
     	return -1;
     }
-    fwrite(&(config->page_size), sizeof(int), 1, dbFile);
-    fwrite(&(config->buffer_size), sizeof(int), 1, dbFile);
-    fwrite(config->db_location, sizeof(char), db_loc_len, dbFile);
-    fwrite(config->page_buffer, sizeof(char), config->buffer_size, dbFile);
+    fwrite(&(db_data->page_size), sizeof(int), 1, dbFile);
+    fwrite(&(db_data->buffer_size), sizeof(int), 1, dbFile);
+    fwrite(db_data->db_location, sizeof(char), db_loc_len, dbFile);
+    fwrite(db_data->page_buffer, sizeof(char), db_data->buffer_size, dbFile);
 
-    free_config( config );
     free( config_file );
 	fclose(dbFile);
 	return 0;
@@ -160,8 +198,20 @@ int update_db_config( char * db_loc, char * buffer ){
  */
 void free_config( db_config *config ){
 	free(config->db_location);
-	free(config->page_buffer);  // ERROR: invalid pointer
+	free(config->page_buffer);  
 	free(config);
+}
+
+/*
+ *
+ */
+void write_page_buffer(){
+	// buffer written to physical page
+	// 
+}
+
+void add_to_page_buffer(){
+	// handle how to add information to page buffer & when excedes
 }
 
 /*
@@ -187,42 +237,37 @@ int main(int argc, char const *argv[])
 	new_buf = "bleh blah boop beep";
 	update_db_config( db_path, new_buf ); // Good
 
-	db_config *test_get = (db_config *)malloc(sizeof(db_config));
-	get_db_config( db_path, test_get );  // Good
-	pretty_print_db_config( test_get );
+	get_db_config( db_path, db_data );  // Good
+	pretty_print_db_config( db_data );
+	pretty_print_db_config( db_data ); 
 	
 	// Lookup Table Testing
-	int table_count = 2;
-	int arr_size = 5;
+	int table_count = MIN_TABLE_COUNT;
+	int arr_size = MIN_BIN_SIZE;
 	// Create some test data
 	if(restart_flag){
-		lookup_table * l_table = (lookup_table *)malloc(sizeof(l_table));
-		result = initialize_lookup_table( table_count, l_table );
+		// Read in lookup File
+		read_lookup_file( db_path, table_l );
+
+		print_lookup_table( table_l );
+
+		terminate_database();
+	}else{
 		for( int i = 0; i < table_count; i++ ){
-			init_table_pages(arr_size, i, &((l_table->table_data[i])));
 			for(int j = 0; j < arr_size; j++ ){
-				((l_table->table_data)[i]).byte_info[j][0] = j+1; 
-				((l_table->table_data)[i]).byte_info[j][1] = j+2; 
-				((l_table->table_data)[i]).byte_info[j][2] = j+3; 
+				((table_l->table_data)[i]).byte_info[j][0] = j+1; 
+				((table_l->table_data)[i]).byte_info[j][1] = j+2; 
+				((table_l->table_data)[i]).byte_info[j][2] = j+3; 
 			}
 		}
-		print_lookup_table( l_table );
+		print_lookup_table( table_l );
 		printf("---------------\n");
-		update_lookup_table(l_table, 1, 3, 13, 56);
-		print_lookup_table( l_table );
+		update_lookup_table(table_l, 1, 3, 13, 56);
+		print_lookup_table( table_l );
 		printf("---------------\n");
 		
-		write_lookup_table( l_table, db_path );
-	}else{
-		// Read in lookup File
-		lookup_table * l_table = (lookup_table *)malloc(sizeof(l_table));
-		read_lookup_file( db_path, l_table );
-
-		print_lookup_table( l_table );
-
-		free_lookup_table( l_table );
+		write_lookup_table( table_l, db_path );
+		terminate_database();
 	}
-
-
 	return 0;
 }

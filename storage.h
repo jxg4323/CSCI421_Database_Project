@@ -39,10 +39,14 @@ typedef struct db_config{
 	char * page_buffer;
 } db_config;
 
+//TODO: need to create a global for db_config * & maniuplate that data
+db_config *db_data;
+lookup_table *table_l;
+
 int get_db_config( char * db_loc, db_config* config );
 int update_db_config( char * db_loc, char * buffer );
 void pretty_print_db_config( db_config *config);
-void allocate_db_config(db_config* config, int db_loc_len, int buf_size);
+int allocate_db_data(int page_size, int buf_size, char *db_loc);
 void free_config( db_config *config );
 
 #endif

@@ -10,6 +10,8 @@ Professor: Scott Johnson
 #define LOOKUP_FILE_NAME_LEN 11
 #define LOOKUP_TUPLE_SIZE 3
 #define LOOKUP_TABLE_FILE "lookup_file"
+#define MIN_TABLE_COUNT 2
+#define MIN_BIN_SIZE 1
 
 typedef struct table_page_locs{
 	int table_id;
