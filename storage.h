@@ -17,6 +17,7 @@ Professor: Scott Johnson
 #define MIN_ALLOC 50
 #define DATABASE_CONFIG_FILE "database_config"
 #define DATABASE_FILE_NAME_LEN 15
+#define TABLE_METADATA_FILE "table_metadata"
 
 
 // Database Config Information
