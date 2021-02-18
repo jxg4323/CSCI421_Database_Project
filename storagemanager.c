@@ -271,3 +271,161 @@ int main(int argc, char const *argv[])
 	}
 	return 0;
 }
+
+/*
+ * This function will drop the table with the provided id
+ * from the database. This will remove all data as well as information
+ * about the table.
+ * @param table_id - the id of the table to drop
+ * @return 0 if table succesfully dropped, -1 otherwise.
+ */
+int drop_table( int table_id ){
+    int cleared = clear_table(table_id);
+    if(cleared == 0){
+        FILE *file;
+        FILE *temp;
+        file = fopen(TABLE_METADATA_FILE, "rb");
+        temp = fopen("temp", "wb");
+        if( file == NULL || temp == NULL){ return -1; }
+        fseek(file, 0, SEEK_END);
+        long file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+        int id;
+        int key_indices_size;
+        int *key_indices;
+        int data_types_size;
+        int *data_types;
+        fread(&id, sizeof(int), 1, file);
+        fwrite(&id, sizeof(int), 1, temp);
+        fread(&id, sizeof(int), 1, file);
+        while(id != table_id){
+            fwrite(&id, sizeof(int), 1, temp);
+            fread(&data_types_size, sizeof(int), 1, file);
+            fwrite(&data_types_size, sizeof(int), 1, temp);
+            int *data_types = malloc(sizeof(int) * data_types_size);
+            fread(&data_types, sizeof(int), data_types_size, file);
+            fwrite(&data_types, sizeof(int), data_types_size, temp);
+            free(data_types);
+            fread(&key_indices_size, sizeof(int), 1, file);
+            fwrite(&key_indices_size, sizeof(int), 1, temp);
+            int *key_indices = malloc(sizeof(int) * key_indices_size);
+            fread(&key_indices, sizeof(int), key_indices_size, file);
+            fwrite(&key_indices, sizeof(int), key_indices_size, temp);
+            free(key_indices);
+            fread(&id, sizeof(int), 1, file);
+        }
+        fread(&data_types_size, sizeof(int), 1, file);
+        fseek(file, sizeof(int) * data_types_size, SEEK_CUR);
+        fread(&key_indices_size, sizeof(int), 1, file);
+        fseek(file, sizeof(int) * key_indices_size, SEEK_CUR);
+        while( file_size != ftell(file)){
+            fread(&id, sizeof(int), 1, file);
+            fwrite(&id, sizeof(int), 1, temp);
+            fread(&data_types_size, sizeof(int), 1, file);
+            fwrite(&data_types_size, sizeof(int), 1, temp);
+            int *data_types = malloc(sizeof(int) * data_types_size);
+            fread(&data_types, sizeof(int), data_types_size, file);
+            fwrite(&data_types, sizeof(int), data_types_size, temp);
+            free(data_types);
+            fread(&key_indices_size, sizeof(int), 1, file);
+            fwrite(&key_indices_size, sizeof(int), 1, temp);
+            int *key_indices = malloc(sizeof(int) * key_indices_size);
+            fread(&key_indices, sizeof(int), key_indices_size, file);
+            fwrite(&key_indices, sizeof(int), key_indices_size, temp);
+            free(key_indices);
+        }
+        fclose(file);
+        fclose(temp);
+        remove(TABLE_METADATA_FILE);
+        rename("temp", TABLE_METADATA_FILE);
+        return 0;
+    }
+    return -1;
+}
+
+/*
+ * This function will clear the table with the provided id
+ * from the database. This will remove all data but not the table.
+ * @param table_id - the id of the table to clear
+ * @return 0 if table succesfully cleared, -1 otherwise.
+ */
+int clear_table( int table_id ){
+    if(get_table_info(table_l, table_id) == -1){ return -1; }
+    FILE *file;
+    file = fopen(TABLE_METADATA_FILE, "rb");
+    fseek(file, sizeof(int),SEEK_SET);
+    if(NULL != file) {
+        int record_length;
+        int id;
+        int key_indices_size;
+        int data_types_size;
+        fread(&id, sizeof(int), 1, file);
+        while(id != table_id){
+            fread(&data_types_size, sizeof(int), 1, file);
+            fseek(file, sizeof(int) * data_types_size, SEEK_CUR);
+            fread(&key_indices_size, sizeof(int), 1, file);
+            fseek(file, sizeof(int) * key_indices_size, SEEK_CUR);
+            fread($id, sizeof(int), 1, file);
+        }
+        fread(&data_types_size, sizeof(int), 1, file);
+        fseek(file, sizeof(int) * data_types_size, SEEK_CUR);
+        fread(&key_indices_size, sizeof(int), 1, file);
+        int *key_indices = malloc(key_indices_size * sizeof(int));
+        fread(&key_indices, sizeof(int), key_indices_size, file);
+        union record_item *key_values = malloc(sizeof(record_item) * key_indices_size);
+        union record_item **records;
+        int num_records = get_records(table_id, records);
+        if (num_records > -1) {
+            for (int i = 0; i < num_records; i++) {
+                for(int j = 0; j < key_indices_size, j++){
+                    key_values[j] = records[i][j]
+                }
+                remove_record(table_id, key_values);
+            }
+        }
+        free(records);
+        free(key_indices);
+        free(key_values);
+        return 0;
+    }
+}
+
+/*
+ * This will add a table to the database with the provided data types and
+ * primary key.
+ * @param data_types - an integer array representing the data types stored
+                       in a tupler in the table.
+ * @param key_indices - an interger array representing the indicies that
+                        make up the parimary key. The order of the indicies
+						in this array deternmine the ordering of the attributes
+						in the primary key.
+ * @param data_types_size - the size of the data types array
+ * @param key_indices_size - the size of the key indicies array.
+ * @return the id of the table created, -1 upon error.
+ */
+int add_table( int * data_types, int * key_indices, int data_types_size, int key_indices_size ){
+    FILE *file;
+    file = fopen(TABLE_METADATA_FILE, "a+b");
+    int new_id = -1;
+    if(NULL != file) {
+        int last_id = -2;
+        fread(&last_id, sizeof(int), 1, file);
+        new_id = last_id + 1;
+        if(new_id > 0) {
+            fwrite(&new_id, sizeof(int), 1, file);
+            fwrite(&data_types_size, sizeof(int), 1, file);
+            fwrite(data_types, sizeof(int), data_types_size, file);
+            fwrite(&key_indices_size, sizeof(int), 1, file);
+            fwrite(key_indices, sizeof(int), key_indices_size, file);
+            fclose(file);
+            file = fopen(TABLE_METADATA_FILE, "r+b");
+            if (NULL != file) {
+                fwrite(&new_id, sizeof(int), 1, file);
+            } else {
+                return -1;
+            }
+        }
+    }
+    if(NULL != file){ fclose(file); }
+    return new_id;
+}
