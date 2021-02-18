@@ -172,7 +172,7 @@ int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_
 /*
  * Based on the given table id do a simple linear search for the id
  *
- * Return location of table information in lookup table or -1 if not found.
+ * Return index location of table information in lookup table or -1 if not found.
  */
 int get_table_info(lookup_table* l_table, int table_id){
 	bool success = false;
@@ -189,9 +189,14 @@ int get_table_info(lookup_table* l_table, int table_id){
 
 /*
  * Delete table information from l_table
+ * Go through the table list and remove and free information 
+ * for the given table. 
+ * Reminder: The calling function should immediately after delete all records for the given table
  */
-int delete_lookup_table(){
-
+int delete_table_info(lookup_table * l_table, int table_id){
+	// Retrieve the table_pages pointer from the lookup_table 
+	// memset it all to 0's and free it
+	// remove all table meta data pertaining to it --> should be done by the delete_table function ** NOT HERE
 }
 
 /*

@@ -24,6 +24,7 @@ Professor: Scott Johnson
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
 	allocate_db_data(page_size, buffer_size, db_loc);
 	table_l = (lookup_table *)malloc(sizeof(lookup_table));
+	// TODO: allocate table metadata file
 	if(restart){
 		return restart_database(db_loc);
 	}else{
@@ -104,8 +105,8 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
  * Safely shutdown storage manager. 
  */
 int terminate_database(){
-	// get database config struct
 	// confirm database config file has been writen
+	// write buffer to file
 	update_db_config( db_data->db_location, db_data->page_buffer );
 	// get lookup table & confirm written
 	write_lookup_table( table_l, db_data->db_location );

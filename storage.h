@@ -29,8 +29,9 @@ typedef struct table_info{
 
 typedef struct page_info{
 	int page_id;
+	int num_of_records;
 	union record_item *** page_data;
-} page_info;
+} page_data;
 
 typedef struct db_config{
 	int page_size;  // Page size should be a variable stored
@@ -39,7 +40,6 @@ typedef struct db_config{
 	char * page_buffer;
 } db_config;
 
-//TODO: need to create a global for db_config * & maniuplate that data
 db_config *db_data;
 lookup_table *table_l;
 
