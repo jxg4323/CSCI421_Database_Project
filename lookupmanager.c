@@ -188,15 +188,60 @@ int get_table_info(lookup_table* l_table, int table_id){
 }
 
 /*
- * Delete table information from l_table
- * Go through the table list and remove and free information 
- * for the given table. 
- * Reminder: The calling function should immediately after delete all records for the given table
+ * Delete table information from l_table.
+ * Go through the table list and remove and free information, 
+ * return pointer with success and NULL with failure.
+ *
+ * Reminder: 
+ * 		--> The calling function should immediately after delete all records for the given table
+ * 		--> remove all table meta data pertaining to it --> should be done by the delete_table function
  */
-int delete_table_info(lookup_table * l_table, int table_id){
+lookup_table* delete_table_info(lookup_table *l_table, int table_id){
 	// Retrieve the table_pages pointer from the lookup_table 
-	// memset it all to 0's and free it
-	// remove all table meta data pertaining to it --> should be done by the delete_table function ** NOT HERE
+	int t_loc = get_table_info(l_table, table_id);
+	int new_size = l_table->table_count - 1;
+	lookup_table* temp = (lookup_table *)malloc(sizeof(lookup_table));
+	initialize_lookup_table( new_size, temp );
+	if( t_loc >= 0 ){
+		// add every element in the array except the specified one
+		int j = 0;
+		for(int i = 0; i < l_table->table_count; i++){
+			if( i != t_loc && j < new_size){
+				// need to allocate memory for the byte_info of table_data
+				init_table_pages(l_table->table_data[i].bin_size, l_table->table_data[i].table_id, &(temp->table_data[j]));
+				temp->table_data[j] = l_table->table_data[i];
+				// TODO: add loop to set byte_info data
+				for(int s = 0; s < l_table->table_data[i].bin_size; s++){
+					temp->table_data[j].byte_info[s][0] = l_table->table_data[i].byte_info[s][0];
+					temp->table_data[j].byte_info[s][1] = l_table->table_data[i].byte_info[s][1];
+					temp->table_data[j].byte_info[s][2] = l_table->table_data[i].byte_info[s][2];
+				}
+				j++;
+			}
+		}
+	}else{
+		return NULL;
+	}
+	return temp;
+}
+
+/*
+ * Add new table information with a base standard bin size
+ * allocated. 
+ * Return 0 with success and -1 for failure.
+ */
+int add_table_info(lookup_table *l_table, int table_id){
+	int end = l_table->table_count;
+	// if the table already exists in the lookup table return -1
+	if( get_table_info(l_table, table_id ) > 0 ){
+		return -1;
+	}
+	table_pages *new_table = (table_pages *)malloc(sizeof(table_pages));
+	init_table_pages(MIN_BIN_SIZE, table_id, new_table);
+	l_table->table_data = (table_pages *)realloc(l_table->table_data, (l_table->table_count++) * sizeof(table_pages));
+	// add new table to the end of the lookup table
+	l_table->table_data[end] = *new_table;
+	return 0;
 }
 
 /*
@@ -217,5 +262,4 @@ void free_table_pages(table_pages* t_data){
 	for( int i = 0; i < t_data->bin_size; i++ ){
 		free( t_data->byte_info[i] );
 	}
-	free( t_data->byte_info );
 }

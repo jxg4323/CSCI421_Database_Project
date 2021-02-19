@@ -35,6 +35,7 @@ int get_table_info(lookup_table* l_table, int table_id);
 void free_lookup_table(lookup_table* l_table);
 void free_table_pages(table_pages* t_data);
 void print_lookup_table(lookup_table *table);
-int delete_table_info(lookup_table * l_table, int table_id);  // TODO:
+lookup_table* delete_table_info(lookup_table *l_table, int table_id);  // TODO: change to return new pointer
+int add_table_info(lookup_table *l_table, int table_id); // TODO:
 
 #endif

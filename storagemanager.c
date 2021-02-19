@@ -110,6 +110,7 @@ int terminate_database(){
 	update_db_config( db_data->db_location, db_data->page_buffer );
 	// get lookup table & confirm written
 	write_lookup_table( table_l, db_data->db_location );
+	// TODO: Write tablemetadata file
 	// free used memory and return
 	free_lookup_table( table_l );
 	free_config( db_data );
@@ -233,14 +234,6 @@ int main(int argc, char const *argv[])
 	// Database config testing
 	int result;
 	result = create_database(db_path, page_size, buffer_size, restart_flag);
-
-	char * new_buf = (char *)malloc(buffer_size*sizeof(char));
-	new_buf = "bleh blah boop beep";
-	update_db_config( db_path, new_buf ); // Good
-
-	get_db_config( db_path, db_data );  // Good
-	pretty_print_db_config( db_data );
-	pretty_print_db_config( db_data ); 
 	
 	// Lookup Table Testing
 	int table_count = MIN_TABLE_COUNT;
@@ -252,6 +245,14 @@ int main(int argc, char const *argv[])
 
 		print_lookup_table( table_l );
 
+		char * new_buf = (char *)malloc(buffer_size*sizeof(char));
+		new_buf = "bleh blah boop beep";
+		update_db_config( db_path, new_buf ); // Good
+
+		get_db_config( db_path, db_data );  // Good
+		pretty_print_db_config( db_data );
+		pretty_print_db_config( db_data ); 
+
 		terminate_database();
 	}else{
 		for( int i = 0; i < table_count; i++ ){
@@ -262,11 +263,25 @@ int main(int argc, char const *argv[])
 			}
 		}
 		print_lookup_table( table_l );
-		printf("---------------\n");
+		printf("--------UPDATE-------\n");
 		update_lookup_table(table_l, 1, 3, 13, 56);
 		print_lookup_table( table_l );
-		printf("---------------\n");
-		
+		printf("--------NEW TABLE-------\n");
+		add_table_info(table_l, 4);
+		update_lookup_table(table_l, 4, 1, 21, 69);
+		print_lookup_table( table_l );
+		printf("---------DELETE TABLE------\n");
+		table_l = delete_table_info(table_l, 4);
+		print_lookup_table( table_l );
+		printf("---------------------\n");
+		printf("--------NEW TABLE-------\n");
+		result = add_table_info(table_l, 1);
+		if( result == -1 ){
+			printf("ERROR: table %d already exists\n", 1);
+		}
+		update_lookup_table(table_l, 1, 1, 15, 76);
+		print_lookup_table( table_l );
+
 		write_lookup_table( table_l, db_path );
 		terminate_database();
 	}
