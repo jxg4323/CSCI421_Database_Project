@@ -24,7 +24,7 @@ Professor: Scott Johnson
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
 	allocate_db_data(page_size, buffer_size, db_loc);
 	table_l = (lookup_table *)malloc(sizeof(lookup_table));
-	// TODO: allocate table metadata file
+	allocate_schema_data();
 	if(restart){
 		return restart_database(db_loc);
 	}else{
@@ -47,8 +47,10 @@ int create_database( char * db_loc, int page_size, int buffer_size, bool restart
 int restart_database( char * db_loc ){
 	int db_result = 0;
 	int lookup_result = 0;
+	int schema_result = 0;
 	db_result = get_db_config(db_loc, db_data);  
 	lookup_result = read_lookup_file(db_loc, table_l);
+	schema_result = get_table_schema(db_loc);
 	if(lookup_result == -1 || lookup_result == -1){
 		free( table_l );
 		free_config( db_data );
@@ -110,7 +112,8 @@ int terminate_database(){
 	update_db_config( db_data->db_location, db_data->page_buffer );
 	// get lookup table & confirm written
 	write_lookup_table( table_l, db_data->db_location );
-	// TODO: Write tablemetadata file
+	// Write tablemetadata file
+	write_table_schema( db_data->db_location );
 	// free used memory and return
 	free_lookup_table( table_l );
 	free_config( db_data );
@@ -128,6 +131,17 @@ int allocate_db_data(int page_size, int buf_size, char *db_loc){
 	db_data->page_buffer = (char *)malloc(buf_size*sizeof(char));
 	memset(db_data->db_location, 0, db_loc_len*sizeof(char));
 	memset(db_data->page_buffer, 0, buf_size*sizeof(char));
+}
+
+/*
+ * Allocate memory for local table_schema_array with base data
+ * and an array of table schemas of size 1.
+ */
+void allocate_schema_data(){
+	all_table_schemas = (table_schema_array *)malloc(sizeof(table_schema_array));
+	all_table_schemas->last_made_id = -1;
+	all_table_schemas->table_count = -1;
+	all_table_schemas->tables = (table_data *)malloc(sizeof(table_data));
 }
 
 /* 
@@ -216,11 +230,11 @@ void add_to_page_buffer(){
 	// handle how to add information to page buffer & when excedes
 }
 
-int get_table_schema(){
+int get_table_schema(char * db_loc){
 
 }
 
-int write_table_schema(){
+int write_table_schema(char * db_loc){
 	
 }
 
@@ -429,6 +443,7 @@ int clear_table( int table_id ){
  * @return the id of the table created, -1 upon error.
  */
 int add_table( int * data_types, int * key_indices, int data_types_size, int key_indices_size ){
+	//TODO: reacllocate the table_schema_array->tables array to accomodate the new table
     FILE *file;
     file = fopen(TABLE_METADATA_FILE, "a+b");
     int new_id = -1;

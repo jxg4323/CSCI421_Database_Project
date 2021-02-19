@@ -48,16 +48,18 @@ typedef struct table_data{
     int *key_indices;
 } table_data;
 
-typesdef struct table_schema_array{
+typedef struct table_schema_array{
     int last_made_id;
     int table_count;
     table_data *tables;
 } table_schema_array;
 
-//TODO: need to create a global for db_config * & maniuplate that data
+table_schema_array *all_table_schemas;
 db_config *db_data;
 lookup_table *table_l;
 
+int get_table_schema(char * db_loc);
+int write_table_schema(char * db_loc);
 int get_db_config( char * db_loc, db_config* config );
 int update_db_config( char * db_loc, char * buffer );
 void pretty_print_db_config( db_config *config);
