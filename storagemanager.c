@@ -219,15 +219,68 @@ void free_config( db_config *config ){
 }
 
 /*
- *
+ * This will pruge the page buffer to disk.
+ * @return 0 on success, -1 on failure.
  */
-void write_page_buffer(){
-	// buffer written to physical page
-	// 
+int purge_buffer(){
+    // basically loop through the buffer array and write the pages to the filee system
 }
 
-void add_to_page_buffer(){
+int findLRU(int time[], int n){
+	int i, minimum = time[0], pos = 0;
+ 
+	for(i = 1; i < n; ++i){
+		if(time[i] < minimum){
+			minimum = time[i];
+			pos = i;
+		}
+	}
+	
+	return pos;
+}
+
+// still need to figure out how to write the least recently used page to the file system
+// still need to write a proper condition to check if the buffer is at its max size or not
+// 
+void add_to_page_buffer(int buffer_size, int page_id){
 	// handle how to add information to page buffer & when excedes
+
+    char * buffer_array = db_config->page_buffer;
+
+    // counter and time are used to find the least recently used page
+    int counter = 0, time[10], flag1, flag2, i, j, pos = 0;
+
+    for(j = 0; j < buffer_size; ++j){
+    	if(buffer_array[j] == page_id){
+			counter++;
+    		time[j] = counter;
+	   		flag1 = flag2 = 1;
+	   		break;
+   		}
+	}
+
+    if(flag1 == 0){
+		for(j = 0; j < no_of_frames; ++j){
+	    	if(buffer_array[j] == -1){    // a condition to check if the buffer array still has some space left
+            // can also check if current size of the buffer array is less than max size of buffer
+	    		counter++;
+	    		buffer_array[j] = page_id;
+	    		time[j] = counter;
+				flag2 = 1;
+    			break;
+	    	}
+    	}	
+    }
+
+    if(flag2 == 0){
+    	pos = findLRU(time, buffer_size);
+    	counter++;
+		// add the least recently used one to the file system
+    	buffer_array[pos] = page_id;
+    	time[pos] = counter;
+    }
+    
+    return 0;
 }
 
 int get_table_schema(char * db_loc){
