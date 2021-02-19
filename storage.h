@@ -39,6 +39,20 @@ typedef struct db_config{
 	char * page_buffer;
 } db_config;
 
+typedef struct table_data{
+    int id;
+    int data_types_size;
+    int *data_types;
+    int key_indices_size;
+    int *key_indices;
+} table_data;
+
+typesdef struct table_schema_array{
+    int last_made_id;
+    int table_count;
+    table_data *tables;
+} table_schema_array;
+
 //TODO: need to create a global for db_config * & maniuplate that data
 db_config *db_data;
 lookup_table *table_l;
