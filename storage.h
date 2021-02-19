@@ -48,7 +48,7 @@ typedef struct table_data{
     int *key_indices;
 } table_data;
 
-typesdef struct table_schema_array{
+typedef struct table_schema_array{
     int last_made_id;
     int table_count;
     table_data *tables;
