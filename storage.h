@@ -18,6 +18,7 @@ Professor: Scott Johnson
 #define DATABASE_CONFIG_FILE "database_config"
 #define DATABASE_FILE_NAME_LEN 15
 #define TABLE_METADATA_FILE "table_metadata"
+#define TABLE_METADATA_FILE_LEN 14
 
 // Database Config Information
 
@@ -43,8 +44,8 @@ typedef struct db_config{
 typedef struct table_data{
     int id;
     int data_types_size;
-    int *data_types;
     int key_indices_size;
+    int *data_types;
     int *key_indices;
 } table_data;
 
@@ -60,6 +61,7 @@ lookup_table *table_l;
 
 int get_table_schema(char * db_loc);
 int write_table_schema(char * db_loc);
+void allocate_schema_data();
 int get_db_config( char * db_loc, db_config* config );
 int update_db_config( char * db_loc, char * buffer );
 void pretty_print_db_config( db_config *config);

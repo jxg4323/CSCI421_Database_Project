@@ -71,8 +71,6 @@ void init_table_pages(int arr_size, int t_id, table_pages * t_data){
  */
 int read_lookup_file(char* db_loc, lookup_table* table){
 	int t_count = 0;
-	ssize_t read = 0;
-	size_t len = 0;
 	int table_indx = 0;
 	FILE* pFile;
 
@@ -243,6 +241,21 @@ int add_table_info(lookup_table *l_table, int table_id){
 	l_table->table_data[end] = *new_table;
 	return 0;
 }
+
+/*
+ * Free the memory associated with the table's page location information.
+ * Return 0 for success and -1 if failure.
+ */
+int clear_table_bin(lookup_table *l_table, int table_id){
+	int loc = get_table_info( l_table, table_id );
+	if( loc != -1 ){
+		free_table_pages( &(l_table->table_data[loc]) );
+		l_table->table_data[loc].bin_size = 0;
+	}else{
+		return -1;
+	}
+	return 0;
+}	
 
 /*
  * Free memory used by lookup table
