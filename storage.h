@@ -29,8 +29,9 @@ typedef struct table_info{
 
 typedef struct page_info{
 	int page_id;
+	int num_of_records;
 	union record_item *** page_data;
-} page_info;
+} page_data;
 
 typedef struct db_config{
 	int page_size;  // Page size should be a variable stored
