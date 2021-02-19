@@ -216,6 +216,15 @@ void add_to_page_buffer(){
 	// handle how to add information to page buffer & when excedes
 }
 
+int get_table_schema(){
+
+}
+
+int write_table_schema(){
+	
+}
+
+
 /*
  * Just for testing. 
  * TODO: REMOVE!!
