@@ -164,8 +164,8 @@ void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schem
 	t_schema->id = t_id;
 	t_schema->data_types_size = types_len;
 	t_schema->key_indices_size = key_len;
-	t_schema->data_types = (int *)malloc(types_len*sizeof(int));
-	t_schema->key_indices = (int *)malloc(key_len*sizeof(int));
+	t_schema->data_types = malloc(types_len*sizeof(int));
+	t_schema->key_indices = malloc(key_len*sizeof(int));
 }
 
 /* 
@@ -394,7 +394,7 @@ int drop_table( int table_id ){
 	// delete the table struct from the metadata array
     int table_count = all_table_schemas->table_count;
     int offset = 0;
-    table_data *table_array = malloc(sizeof(table_data) * (new_table_count-1));
+    table_data *table_array = malloc(sizeof(table_data) * (table_count-1));
     for(int i = 0; i < table_count; i++){
         if(table_id != all_table_schemas->tables[i].id){
             table_data *table = malloc(sizeof(table_data));
@@ -436,7 +436,7 @@ int clear_table( int table_id ){
     // delete all of the records for the table
     if(get_table_info(table_l, table_id) == -1){ return -1; }
 
-    int key_indices_size = 0;
+/*    int key_indices_size = 0;
     for(int i = 0; i < all_table_schemas->table_count; i++){
         if(table_id = all_table_schemas->tables[i].id){
             key_indices_size = all_table_schemas->tables[i].key_indices_size;
@@ -444,12 +444,12 @@ int clear_table( int table_id ){
     }
 
 
-    union record_item *key_values = malloc(sizeof(record_item) * key_indices_size);
+    union record_item *key_values = malloc(sizeof(union record_item) * key_indices_size);
     union record_item **records;
     int num_records = get_records(table_id, &records);
     if (num_records > -1) {
         for (int i = 0; i < num_records; i++) {
-            for(int j = 0; j < key_indices_size, j++){
+            for(int j = 0; j < key_indices_size; j++){
                 key_values[j] = records[i][j];
             }
             remove_record(table_id, key_values);
@@ -461,7 +461,7 @@ int clear_table( int table_id ){
         return -1;
     }
     free(records);
-    free(key_values);
+    free(key_values);*/
     // clear the table bin information from lookup table
     clear_table_bin( table_l, table_id );
     return 0;
@@ -484,13 +484,22 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
 	//TODO: reacllocate the table_schema_array->tables array to accomodate the new table
 	int end_indx = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->table_count;
    	int new_id = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->last_made_id+1;
+    table_data *table = get_table_schema(new_id);
+    if(table != NULL ){ return -1; }
    	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
    	manage_all_schema_array( (all_table_schemas->table_count+1),true );
    	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
+   	/*for(int i = 0; i < data_types_size; i++){
+   	    all_table_schemas->tables[end_indx].data_types[i] = data_types[i];
+   	}
+    for(int i = 0; i < key_indices_size; i++){
+        all_table_schemas->tables[end_indx].key_indices[i] = key_indices[i];
+    }*/
    	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
    	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
    	all_table_schemas->last_made_id = new_id;
    	all_table_schemas->table_count = end_indx + 1;
+   	// add_table_info(table_l, new_id);
     return new_id;
 }
 
@@ -536,38 +545,10 @@ int main(int argc, char const *argv[])
 
 		terminate_database();
 	}else{
-		for( int i = 0; i < table_count; i++ ){
-			for(int j = 0; j < arr_size; j++ ){
-				((table_l->table_data)[i]).byte_info[j][0] = j+1; 
-				((table_l->table_data)[i]).byte_info[j][1] = j+2; 
-				((table_l->table_data)[i]).byte_info[j][2] = j+3; 
-			}
-		}
-		print_lookup_table( table_l );
-		printf("--------UPDATE-------\n");
-		update_lookup_table(table_l, 1, 3, 13, 56);
-		print_lookup_table( table_l );
-		printf("--------NEW TABLE-------\n");
-		add_table_info(table_l, 4);
-		update_lookup_table(table_l, 4, 1, 21, 69);
-		print_lookup_table( table_l );
-		printf("---------DELETE TABLE------\n");
-		table_l = delete_table_info(table_l, 4);
-		print_lookup_table( table_l );
-		printf("---------------------\n");
-		printf("--------NEW TABLE-------\n");
-		result = add_table_info(table_l, 1);
-		if( result == -1 ){
-			printf("ERROR: table %d already exists\n", 1);
-		}
-		update_lookup_table(table_l, 1, 1, 15, 76);
-		print_lookup_table( table_l );
-		printf("----------------------\n");
-		clear_table_bin( table_l, 1 );
-		print_lookup_table( table_l );
-		printf("----------------------\n");
-
-		write_lookup_table( table_l, db_path );
+        print_lookup_table( table_l );
+        printf("----------------------\n");
+        pretty_print_table_schemas(all_table_schemas);
+        print_lookup_table( table_l );
 		terminate_database();
 	}
 	return 0;
