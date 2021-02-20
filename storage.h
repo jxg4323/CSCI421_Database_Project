@@ -20,10 +20,6 @@ Professor: Scott Johnson
 #define TABLE_METADATA_FILE "table_metadata"
 #define TABLE_METADATA_FILE_LEN 14
 
-table_schema_array *all_table_schemas;
-db_config *db_data;
-lookup_table *table_l;
-
 // Database Config Information
 
 typedef struct db_config{
@@ -49,6 +45,17 @@ typedef struct table_schema_array{
     table_data *tables;
 } table_schema_array;
 
+// Page Buffer Information 
+
+
+
+// Globals
+
+table_schema_array *all_table_schemas;
+db_config *db_data;
+lookup_table *table_l;
+
+
 // Database Config Functions
 
 int get_db_config( char * db_loc, db_config* config );
@@ -62,5 +69,11 @@ void free_config( db_config *config );
 int get_all_schemas(char * db_loc);
 int write_all_schemas(char * db_loc);
 void allocate_all_schemas();
+void manage_all_schema_array(int count, bool increase_size);
+table_data* get_table_schema( int table_id );
+void pretty_print_table_schemas( table_schema_array *schemas );
+void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schema);
+void free_table_schemas();
+
 
 #endif
