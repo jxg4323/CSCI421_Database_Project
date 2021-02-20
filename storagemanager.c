@@ -379,13 +379,25 @@ int drop_table( int table_id ){
     table_data *table_array = malloc(sizeof(table_data) * (new_table_count-1));
     for(int i = 0; i < table_count; i++){
         if(table_id != all_table_schemas->tables[i].id){
-            table_array[i-offset] = all_table_schemas->tables[i];
+            table_data *table = malloc(sizeof(table_data));
+            table->id = all_table_schemas->tables[i].id;
+            table->data_types_size = all_table_schemas->tables[i].data_types_size;
+            table->data_types = malloc(sizeof(int) * table->data_types_size);
+            for(int j = 0; j < table->data_types_size; j++){
+                table->data_types[j] = all_table_schemas->tables[i].data_types[j];
+            }
+            table->key_indices_size = all_table_schemas->tables[i].key_indices_size;
+            table->key_indices = malloc(sizeof(int) * table->key_indices_size);
+            for(int j = 0; j < table->key_indices_size; j++){
+                table->key_indices[j] = all_table_schemas->tables[i].key_indices[j];
+            }
+            table_array[i-offset] = *table;
         } else {
-            free(all_table_schemas->tables[i].key_indices);
-            free(all_table_schemas->tables[i].data_types);
-            free(&(all_table_schemas->tables[i]));
             offset = 1;
         }
+        free(all_table_schemas->tables[i].key_indices);
+        free(all_table_schemas->tables[i].data_types);
+        free(&(all_table_schemas->tables[i]));
     }
     all_table_schemas->table_count = table_count - 1;
     free(all_table_schemas->tables);
