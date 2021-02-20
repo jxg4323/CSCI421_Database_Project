@@ -232,7 +232,7 @@ lookup_table* delete_table_info(lookup_table *l_table, int table_id){
 int add_table_info(lookup_table *l_table, int table_id){
 	int end = l_table->table_count;
 	// if the table already exists in the lookup table return -1
-	if( get_table_info(l_table, table_id ) > 0 ){
+	if( get_table_info(l_table, table_id ) >= 0 ){
 		return -1;
 	}
 	table_pages *new_table = (table_pages *)malloc(sizeof(table_pages));
