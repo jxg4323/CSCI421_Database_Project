@@ -118,6 +118,7 @@ int terminate_database(){
 	// free used memory and return
 	free_lookup_table( table_l );
 	free_config( db_data );
+	free_table_schemas( all_table_schemas );
 }
 
 /*
@@ -149,7 +150,7 @@ void allocate_all_schemas(){
  */
 void manage_all_schema_array(int count, bool increase_size){
 	if( increase_size ){ // if True increase the size of the table_schemas
-		all_table_schemas->tables = (table_data *)realloc(count*sizeof(table_data));
+		all_table_schemas->tables = (table_data *)realloc(all_table_schemas->tables, count*sizeof(table_data));
 	}else{
 		all_table_schemas->tables = (table_data *)malloc(count*sizeof(table_data));
 	}
@@ -249,6 +250,41 @@ int purge_buffer(){
     // basically loop through the buffer array and write the pages to the filee system
 }
 
+
+void free_table_schemas( table_schema_array* schemas ){
+	for( int i = 0; i < schemas->table_count; i++ ){
+		free( schemas->tables[i].data_types );
+		free( schemas->tables[i].key_indices );
+	}
+	free( schemas->tables );
+}
+
+/*
+ * Pretty print the table schemas
+ */
+void pretty_print_table_schemas( table_schema_array *schemas ){
+	printf(" Table Schemas \n");
+	for(int i = 0; i < schemas->table_count; i++){
+		printf("Table ID: %d Data types: [ ", schemas->tables[i].id);
+		for( int j = 0; j < schemas->tables[i].data_types_size; j++){
+			if( j == schemas->tables[i].data_types_size-1 ){
+				printf("%d ", schemas->tables[i].data_types[j]);
+			}else{
+				printf("%d, ", schemas->tables[i].data_types[j]);
+			}
+		}
+		printf(" ], Key Indices: [ ");
+		for( int j = 0; j < schemas->tables[i].key_indices_size; j++){
+			if( j == schemas->tables[i].key_indices_size-1 ){
+				printf("%d ", schemas->tables[i].key_indices[j]);
+			}else{
+				printf("%d, ", schemas->tables[i].key_indices[j]);
+			}
+		}
+		printf(" ]\n");
+	}
+}
+
 /*
  * Loop through the file allocating the volatile memory for the table schemas.
  * Return 0 with success and -1 for failure.
@@ -286,7 +322,7 @@ int get_all_schemas(char * db_loc){
 		fread((all_table_schemas->tables[table_indx]).data_types,sizeof(int),types_len,schema_fp);
 		fread((all_table_schemas->tables[table_indx]).key_indices,sizeof(int),key_len,schema_fp);
 		// next line
-		if(feof(pFile) || table_indx == (all_table_schemas->table_count-1)){ //read until end of file character or there aren't any more tables
+		if(feof(schema_fp) || table_indx == (all_table_schemas->table_count-1)){ //read until end of file character or there aren't any more tables
 			break;
 		}
 		table_indx++;
@@ -332,8 +368,8 @@ int write_all_schemas(char * db_loc){
 
 /*
  * Look for table schema information based on given table.
- * Return table_data pointer for schema data if the table
- * exists o.w return NULL.
+ * Return table_data pointer for schema data if the table 
+ * exists o.w. return NULL.
  */
 table_data* get_table_schema( int table_id ){
 	for(int i = 0; i < all_table_schemas->table_count; i++){
@@ -446,14 +482,15 @@ int clear_table( int table_id ){
  */
 int add_table( int * data_types, int * key_indices, int data_types_size, int key_indices_size ){
 	//TODO: reacllocate the table_schema_array->tables array to accomodate the new table
-	int end_indx = all_table_schemas->table_count;
+	int end_indx = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->table_count;
    	int new_id = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->last_made_id+1;
    	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
    	manage_all_schema_array( (all_table_schemas->table_count+1),true );
    	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
    	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
    	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
-   	all_table_schemas->table_count++;
+   	all_table_schemas->last_made_id = new_id;
+   	all_table_schemas->table_count = end_indx + 1;
     return new_id;
 }
 
@@ -493,6 +530,9 @@ int main(int argc, char const *argv[])
 		get_db_config( db_path, db_data );  // Good
 		pretty_print_db_config( db_data );
 		pretty_print_db_config( db_data ); 
+
+		get_all_schemas( db_path );
+		pretty_print_table_schemas( all_table_schemas );
 
 		terminate_database();
 	}else{
