@@ -419,7 +419,7 @@ int clear_table( int table_id ){
     if (num_records > -1) {
         for (int i = 0; i < num_records; i++) {
             for(int j = 0; j < key_indices_size, j++){
-                key_values[j] = records[i][j]
+                key_values[j] = records[i][j];
             }
             remove_record(table_id, key_values);
         }
