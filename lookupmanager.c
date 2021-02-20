@@ -217,6 +217,7 @@ lookup_table* delete_table_info(lookup_table *l_table, int table_id){
 				j++;
 			}
 		}
+		// TODO: Error here when allocating the given lookup table
 	}else{
 		return NULL;
 	}

@@ -20,19 +20,11 @@ Professor: Scott Johnson
 #define TABLE_METADATA_FILE "table_metadata"
 #define TABLE_METADATA_FILE_LEN 14
 
+table_schema_array *all_table_schemas;
+db_config *db_data;
+lookup_table *table_l;
+
 // Database Config Information
-
-typedef struct table_info{
-	int table_id;
-	union record_item *** table;
-	int * page_ids;
-} table_info;
-
-typedef struct page_info{
-	int page_id;
-	int num_of_records;
-	union record_item *** page_data;
-} page_data;
 
 typedef struct db_config{
 	int page_size;  // Page size should be a variable stored
@@ -40,6 +32,8 @@ typedef struct db_config{
 	char * db_location;
 	char * page_buffer;
 } db_config;
+
+// Table Structure Information
 
 typedef struct table_data{
     int id;
@@ -55,17 +49,18 @@ typedef struct table_schema_array{
     table_data *tables;
 } table_schema_array;
 
-table_schema_array *all_table_schemas;
-db_config *db_data;
-lookup_table *table_l;
+// Database Config Functions
 
-int get_table_schema(char * db_loc);
-int write_table_schema(char * db_loc);
-void allocate_schema_data();
 int get_db_config( char * db_loc, db_config* config );
 int update_db_config( char * db_loc, char * buffer );
 void pretty_print_db_config( db_config *config);
 int allocate_db_data(int page_size, int buf_size, char *db_loc);
 void free_config( db_config *config );
+
+// Table Functions
+
+int get_all_schemas(char * db_loc);
+int write_all_schemas(char * db_loc);
+void allocate_all_schemas();
 
 #endif
