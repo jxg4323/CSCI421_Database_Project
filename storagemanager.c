@@ -267,6 +267,7 @@ int get_all_schemas(char * db_loc){
 	schema_fp = fopen(schema_file, "rb");
 	if( schema_fp == NULL){
 		fprintf(stderr, "ERROR: get_all_schemas invalid table metadata file %s\n", schema_file);
+		free(schema_file);
 		return -1;
 	}
 	fread(&(all_table_schemas->last_made_id),sizeof(int),1,schema_fp);
@@ -312,6 +313,7 @@ int write_all_schemas(char * db_loc){
 	wFile = fopen(schema_file, "wb");
 	if( wFile == NULL){
 		fprintf(stderr, "ERROR: write_all_schemas invalid table metadata file %s\n", schema_file);
+		free(schema_file);
 		return -1;
 	}
 	fwrite(&(all_table_schemas->last_made_id),sizeof(int),1,wFile);
@@ -350,11 +352,41 @@ table_data* get_table_schema( int table_id ){
  * @return 0 if table succesfully dropped, -1 otherwise.
  */
 int drop_table( int table_id ){
-	// TODO: Delete all records for the table
-	// delete the table_info from the lookup table
-	table_l = delete_table_info( table_l, table_id );
+	// delete all records for the table
+    int cleared = 0 ;
+    //if(cleared == -1){ return -1; }
 	// delete the table struct from the metadata array
-
+    int table_count = all_table_schemas->table_count;
+    int offset = 0;
+    table_data *table_array = malloc(sizeof(table_data) * (new_table_count-1));
+    for(int i = 0; i < table_count; i++){
+        if(table_id != all_table_schemas->tables[i].id){
+            table_data *table = malloc(sizeof(table_data));
+            table->id = all_table_schemas->tables[i].id;
+            table->data_types_size = all_table_schemas->tables[i].data_types_size;
+            table->key_indices_size = all_table_schemas->tables[i].key_indices_size;
+            table->data_types = malloc(sizeof(int) * table->data_types_size);
+            for(int j = 0; j < table->data_types_size; j++){
+                table->data_types[j] = all_table_schemas->tables[i].data_types[j];
+            }
+            table->key_indices = malloc(sizeof(int) * table->key_indices_size);
+            for(int j = 0; j < table->key_indices_size; j++){
+                table->key_indices[j] = all_table_schemas->tables[i].key_indices[j];
+            }
+            table_array[i-offset] = *table;
+        } else {
+            offset = 1;
+        }
+        free(all_table_schemas->tables[i].key_indices);
+        free(all_table_schemas->tables[i].data_types);
+        free(&(all_table_schemas->tables[i]));
+    }
+    all_table_schemas->table_count = table_count - 1;
+    free(all_table_schemas->tables);
+    all_table_schemas->tables = table_array;
+    // delete the table_info from the lookup table
+    table_l = delete_table_info(table_l, table_id);
+    return 0;
 }
 
 /*
@@ -365,13 +397,35 @@ int drop_table( int table_id ){
  */
 int clear_table( int table_id ){
     // In table metadata structure array remove the data types and key indices for given id
-	t_schema = get_table_schema( table_id );
-	memset(t_schema->data_types, 0, t_schema->data_types_size*sizeof(int));
-	memset(t_schema->key_indices, 0, t_schema->key_indices_size*sizeof(int));
-	free(data_types);
-	free(key_indices);
-    // TODO: delete all of the records for the table
+    // delete all of the records for the table
+    if(get_table_info(table_l, table_id) == -1){ return -1; }
 
+    int key_indices_size = 0;
+    for(int i = 0; i < all_table_schemas->table_count; i++){
+        if(table_id = all_table_schemas->tables[i].id){
+            key_indices_size = all_table_schemas->tables[i].key_indices_size;
+        }
+    }
+
+
+    union record_item *key_values = malloc(sizeof(record_item) * key_indices_size);
+    union record_item **records;
+    int num_records = get_records(table_id, &records);
+    if (num_records > -1) {
+        for (int i = 0; i < num_records; i++) {
+            for(int j = 0; j < key_indices_size, j++){
+                key_values[j] = records[i][j];
+            }
+            remove_record(table_id, key_values);
+            free(&(records[i]));
+        }
+    } else {
+        free(records);
+        free(key_values);
+        return -1;
+    }
+    free(records);
+    free(key_values);
     // clear the table bin information from lookup table
     clear_table_bin( table_l, table_id );
     return 0;
@@ -477,127 +531,4 @@ int main(int argc, char const *argv[])
 		terminate_database();
 	}
 	return 0;
-}
-
-/*
- * This function will drop the table with the provided id
- * from the database. This will remove all data as well as information
- * about the table.
- * @param table_id - the id of the table to drop
- * @return 0 if table succesfully dropped, -1 otherwise.
- */
-int drop_table( int table_id ){
-    int cleared = clear_table(table_id);
-    if(cleared == -1){ return -1; }
-
-    int table_count = all_table_schemas->table_count;
-    int offset = 0;
-    table_data *table_array = malloc(sizeof(table_data) * (new_table_count-1));
-    for(int i = 0; i < table_count; i++){
-        if(table_id != all_table_schemas->tables[i].id){
-            table_data *table = malloc(sizeof(table_data));
-            table->id = all_table_schemas->tables[i].id;
-            table->data_types_size = all_table_schemas->tables[i].data_types_size;
-            table->data_types = malloc(sizeof(int) * table->data_types_size);
-            for(int j = 0; j < table->data_types_size; j++){
-                table->data_types[j] = all_table_schemas->tables[i].data_types[j];
-            }
-            table->key_indices_size = all_table_schemas->tables[i].key_indices_size;
-            table->key_indices = malloc(sizeof(int) * table->key_indices_size);
-            for(int j = 0; j < table->key_indices_size; j++){
-                table->key_indices[j] = all_table_schemas->tables[i].key_indices[j];
-            }
-            table_array[i-offset] = *table;
-        } else {
-            offset = 1;
-        }
-        free(all_table_schemas->tables[i].key_indices);
-        free(all_table_schemas->tables[i].data_types);
-        free(&(all_table_schemas->tables[i]));
-    }
-    all_table_schemas->table_count = table_count - 1;
-    free(all_table_schemas->tables);
-    all_table_schemas->tables = table_array;
-    table_l = delete_table_info(table_l, table_id);
-    return 0;
-}
-
-/*
- * This function will clear the table with the provided id
- * from the database. This will remove all data but not the table.
- * @param table_id - the id of the table to clear
- * @return 0 if table succesfully cleared, -1 otherwise.
- */
-int clear_table( int table_id ){
-    if(get_table_info(table_l, table_id) == -1){ return -1; }
-
-    int index = -1;
-    for(int i = 0; i < all_table_schemas->table_count; i++){
-        if(table_id = all_table_schemas->tables[i].id){
-            index = i;
-        }
-    }
-
-    if(index == -1){ return -1; }
-
-    int key_indices_size = all_table_schemas->tables[index].key_indices_size;
-    union record_item *key_values = malloc(sizeof(record_item) * key_indices_size);
-    union record_item **records;
-    int num_records = get_records(table_id, &records);
-    if (num_records > -1) {
-        for (int i = 0; i < num_records; i++) {
-            for(int j = 0; j < key_indices_size, j++){
-                key_values[j] = records[i][j];
-            }
-            remove_record(table_id, key_values);
-        }
-    } else {
-        free(records);
-        free(key_values);
-        return -1;
-    }
-    free(records);
-    free(key_values);
-    return 0;
-}
-
-/*
- * This will add a table to the database with the provided data types and
- * primary key.
- * @param data_types - an integer array representing the data types stored
-                       in a tupler in the table.
- * @param key_indices - an interger array representing the indicies that
-                        make up the parimary key. The order of the indicies
-						in this array deternmine the ordering of the attributes
-						in the primary key.
- * @param data_types_size - the size of the data types array
- * @param key_indices_size - the size of the key indicies array.
- * @return the id of the table created, -1 upon error.
- */
-int add_table( int * data_types, int * key_indices, int data_types_size, int key_indices_size ){
-    if(get_table_info(table_l, table_id) == -1){ return -1; }
-
-	table_data *table = malloc(sizeof(table_data));
-	int id = all_table_schemas->last_made_id + 1;
-	all_table_schemas->last_made_id = id;
-
-	table->id = id;
-    table->data_types_size = data_types_size;
-	table->data_types = malloc(sizeof(int) * data_types_size);
-    table->key_indices_size = key_indices_size;
-    table->key_indices = malloc(sizeof(int) * data_types_size);
-
-    int i;
-    for(i = 0; i < data_types_size; i++){
-        table->data_types[i] = data_types[i];
-    }
-    for(i = 0; i < key_indices_size; i++){
-        table->key_indices[i] = key_indices[i];
-    }
-
-    int end = all_table_schemas->table_count;
-    all_table_schemas->table_count = end + 1;
-    all_table_schemas->tables = realloc(all_table_schemas->tables, sizeof(table_data) * (end+1));
-    all_table_schemas->tables[end] = *table;
-    return id;
 }
