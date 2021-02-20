@@ -390,7 +390,7 @@ table_data* get_table_schema( int table_id ){
 int drop_table( int table_id ){
 	// delete all records for the table
     int cleared = 0 ;
-    //if(cleared == -1){ return -1; }
+    if(cleared == -1){ return -1; }
 	// delete the table struct from the metadata array
     int table_count = all_table_schemas->table_count;
     int offset = 0;
@@ -489,17 +489,11 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
    	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
    	manage_all_schema_array( (all_table_schemas->table_count+1),true );
    	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
-   	/*for(int i = 0; i < data_types_size; i++){
-   	    all_table_schemas->tables[end_indx].data_types[i] = data_types[i];
-   	}
-    for(int i = 0; i < key_indices_size; i++){
-        all_table_schemas->tables[end_indx].key_indices[i] = key_indices[i];
-    }*/
    	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
    	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
    	all_table_schemas->last_made_id = new_id;
    	all_table_schemas->table_count = end_indx + 1;
-   	// add_table_info(table_l, new_id);
+   	add_table_info(table_l, new_id);
     return new_id;
 }
 
@@ -545,10 +539,34 @@ int main(int argc, char const *argv[])
 
 		terminate_database();
 	}else{
+	    int data_types_size = 7;
+	    int key_indices_size = 3;
+	    int *data_types = malloc(sizeof(int) * 7);
+	    int *key_indices = malloc(sizeof(int) * 3);
+	    data_types[0] = 0;
+        data_types[1] = 0;
+        data_types[2] = 1;
+        data_types[3] = 4;
+        data_types[4] = 3;
+        data_types[5] = 2;
+        data_types[6] = 1;
+        key_indices[0] = 0;
+        key_indices[1] = 4;
+        key_indices[2] = 2;
+	    int result = add_table(data_types, key_indices, data_types_size, key_indices_size);
+	    printf("Created a table with id: %d\n", result);
         print_lookup_table( table_l );
-        printf("----------------------\n");
+        pretty_print_table_schemas(all_table_schemas);
+        printf("----------DROP TABLE----------\n");
+        drop_table(0);
         pretty_print_table_schemas(all_table_schemas);
         print_lookup_table( table_l );
+        printf("----------CLEAR TABLE----------\n");
+        clear_table(1);
+        pretty_print_table_schemas(all_table_schemas);
+        print_lookup_table( table_l );
+        free(data_types);
+        free(key_indices);
 		terminate_database();
 	}
 	return 0;
