@@ -24,7 +24,7 @@ Professor: Scott Johnson
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
 	allocate_db_data(page_size, buffer_size, db_loc);
 	table_l = (lookup_table *)malloc(sizeof(lookup_table));
-	allocate_schema_data();
+	allocate_all_schemas();
 	if(restart){
 		return restart_database(db_loc);
 	}else{
@@ -50,10 +50,11 @@ int restart_database( char * db_loc ){
 	int schema_result = 0;
 	db_result = get_db_config(db_loc, db_data);  
 	lookup_result = read_lookup_file(db_loc, table_l);
-	schema_result = get_table_schema(db_loc);
-	if(lookup_result == -1 || lookup_result == -1){
+	schema_result = get_all_schemas(db_loc);
+	if(db_result == -1 || lookup_result == -1 || schema_result == -1){
 		free( table_l );
 		free_config( db_data );
+		// TODO: create free function for table schema
 		return -1;
 	}else{
 		return 0;
@@ -113,7 +114,7 @@ int terminate_database(){
 	// get lookup table & confirm written
 	write_lookup_table( table_l, db_data->db_location );
 	// Write tablemetadata file
-	write_table_schema( db_data->db_location );
+	write_all_schemas( db_data->db_location );
 	// free used memory and return
 	free_lookup_table( table_l );
 	free_config( db_data );
@@ -134,14 +135,36 @@ int allocate_db_data(int page_size, int buf_size, char *db_loc){
 }
 
 /*
- * Allocate memory for local table_schema_array with base data
- * and an array of table schemas of size 1.
+ * Allocate memory for local table_schema_array WITHOUT allocating
+ * memory for the array of structures.
  */
-void allocate_schema_data(){
-	all_table_schemas = malloc(sizeof(table_schema_array));
+void allocate_all_schemas(){
+	all_table_schemas = (table_schema_array *)malloc(sizeof(table_schema_array));
 	all_table_schemas->last_made_id = -1;
 	all_table_schemas->table_count = -1;
-	all_table_schemas->tables = malloc(sizeof(table_data));
+}
+
+/*
+ * Allocate structure array for the table schemas
+ */
+void manage_all_schema_array(int count, bool increase_size){
+	if( increase_size ){ // if True increase the size of the table_schemas
+		all_table_schemas->tables = (table_data *)realloc(count*sizeof(table_data));
+	}else{
+		all_table_schemas->tables = (table_data *)malloc(count*sizeof(table_data));
+	}
+}
+
+/*
+ * Initialize the given structure with the correct id, type array length, and
+ * key indices array length. Also, allocate the memory required for the arrays.
+ */
+void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schema){
+	t_schema->id = t_id;
+	t_schema->data_types_size = types_len;
+	t_schema->key_indices_size = key_len;
+	t_schema->data_types = (int *)malloc(types_len*sizeof(int));
+	t_schema->key_indices = (int *)malloc(key_len*sizeof(int));
 }
 
 /* 
@@ -219,77 +242,166 @@ void free_config( db_config *config ){
 }
 
 /*
- *
+ * This will pruge the page buffer to disk.
+ * @return 0 on success, -1 on failure.
  */
-void write_page_buffer(){
-	// buffer written to physical page
-	// 
+int purge_buffer(){
+    // basically loop through the buffer array and write the pages to the filee system
 }
 
-void add_to_page_buffer(){
-	// handle how to add information to page buffer & when excedes
+/*
+ * Loop through the file allocating the volatile memory for the table schemas.
+ * Return 0 with success and -1 for failure.
+ */
+int get_all_schemas(char * db_loc){
+	int table_indx = 0;
+	// Read the metadata file and store in volatile memory
+	FILE *schema_fp;
+	int file_len = strlen(db_loc) + TABLE_METADATA_FILE_LEN;
+	char *schema_file = (char *)malloc(file_len*sizeof(char));
+
+	memset(schema_file, 0, file_len*sizeof(char));
+	strcat(schema_file, db_loc);
+	strcat(schema_file, TABLE_METADATA_FILE);
+
+	schema_fp = fopen(schema_file, "rb");
+	if( schema_fp == NULL){
+		fprintf(stderr, "ERROR: get_all_schemas invalid table metadata file %s\n", schema_file);
+		return -1;
+	}
+	fread(&(all_table_schemas->last_made_id),sizeof(int),1,schema_fp);
+	fread(&(all_table_schemas->table_count), sizeof(int),1,schema_fp);
+	manage_all_schema_array(all_table_schemas->table_count, false);
+	while( 1 ){
+		// cast first part of the line to the lookup_info struct to get bin & table info
+		int t_id = -1;
+		int types_len = -1;
+		int key_len = -1;
+		fread(&t_id,sizeof(int),1,schema_fp);
+		fread(&types_len,sizeof(int),1,schema_fp);
+		fread(&key_len,sizeof(int),1,schema_fp);
+		// init structure for table schema
+		init_table_schema(t_id, types_len, key_len, &(all_table_schemas->tables[table_indx]));
+		fread((all_table_schemas->tables[table_indx]).data_types,sizeof(int),types_len,schema_fp);
+		fread((all_table_schemas->tables[table_indx]).key_indices,sizeof(int),key_len,schema_fp);
+		// next line
+		if(feof(pFile) || table_indx == (all_table_schemas->table_count-1)){ //read until end of file character or there aren't any more tables
+			break;
+		}
+		table_indx++;
+	}
+	free( schema_file );
+	fclose( schema_fp );
+	return 0;
 }
 
-int get_table_schema(char * db_loc){
-    FILE *table_metadata;
-    int db_loc_len = strlen(db_loc) + TABLE_METADATA_FILE_LEN;
-    char *table_file = malloc(db_loc_len*sizeof(char));
-    memset(table_file, 0, db_loc_len*sizeof(char));
-    strcat(table_file, db_loc);
-    strcat(table_file, TABLE_METADATA_FILE);
-    table_metadata = fopen(table_file,"rb");
-    if(table_metadata == NULL){
-        fprintf(stderr,"ERROR: get_table_schema invalid table metadata file %s\n",db_loc);
-        return -1;
-    }
+/*
+ * Loop through the table schemas writing them to the disk.
+ * Return 0 with success and -1 for failure.
+ */
+int write_all_schemas(char * db_loc){
+	// Loop through all the table metadata structures and write the contents to a given file
+	FILE *wFile;
+	int file_len = strlen(db_loc) + TABLE_METADATA_FILE_LEN;
+	char *schema_file = (char *)malloc(file_len*sizeof(char));
 
-    allocate_schema_data();
-    fread(&(all_table_schemas->last_made_id), sizeof(int), 1, table_metadata);
-    fread(&(all_table_schemas->table_count), sizeof(int), 1, table_metadata);
-    all_table_schemas->tables = realloc(all_table_schemas->tables, table_count * sizeof(table_data));
-    for(int i = 0; i < all_table_schemas->table_count; i++){
-        table_data *table = malloc(sizeof(table_data));
-        fread(&(table->id), sizeof(int), 1, table_metadata);
-        fread(&(table->data_types_size), sizeof(int), 1, table_metadata);
-        table->data_types = malloc(sizeof(int) * table->data_types_size);
-        fread(table->data_types, sizeof(int), table->data_types_size, table_metadata);
-        fread(&(table->key_indices_size), sizeof(int), 1, table_metadata);
-        table->key_indices = malloc(sizeof(int) * table->key_indices_size);
-        fread(table->key_indices, sizeof(int), table->key_indices_size, table_metadata);
-        all_table_schemas->tables[i] = *table;
-    }
+	memset(schema_file, 0, file_len*sizeof(char));
+	strcat(schema_file, db_loc);
+	strcat(schema_file, TABLE_METADATA_FILE);
+
+	wFile = fopen(schema_file, "wb");
+	if( wFile == NULL){
+		fprintf(stderr, "ERROR: write_all_schemas invalid table metadata file %s\n", schema_file);
+		return -1;
+	}
+	fwrite(&(all_table_schemas->last_made_id),sizeof(int),1,wFile);
+	fwrite(&(all_table_schemas->table_count),sizeof(int),1,wFile);
+	for( int i = 0; i < all_table_schemas->table_count; i++){
+		fwrite(&(all_table_schemas->tables[i].id),sizeof(int),1,wFile);
+		fwrite(&(all_table_schemas->tables[i].data_types_size),sizeof(int),1,wFile);
+		fwrite(&(all_table_schemas->tables[i].key_indices_size),sizeof(int),1,wFile);
+		fwrite(all_table_schemas->tables[i].data_types,sizeof(int),all_table_schemas->tables[i].data_types_size*sizeof(int),wFile);
+		fwrite(all_table_schemas->tables[i].key_indices,sizeof(int),all_table_schemas->tables[i].key_indices_size*sizeof(int),wFile);
+	}
+	free( schema_file );
+	fclose( wFile );
+	return 0;
+}
+
+/*
+ * Look for table schema information based on given table.
+ * Return table_data pointer for schema data if the table
+ * exists o.w return NULL.
+ */
+table_data* get_table_schema( int table_id ){
+	for(int i = 0; i < all_table_schemas->table_count; i++){
+		if ( all_table_schemas->tables[i].id == table_id ){
+			return &(all_table_schemas->tables[i]);
+		}
+	}
+	return NULL;
+}
+
+/*
+ * This function will drop the table with the provided id
+ * from the database. This will remove all data as well as information
+ * about the table.
+ * @param table_id - the id of the table to drop
+ * @return 0 if table succesfully dropped, -1 otherwise.
+ */
+int drop_table( int table_id ){
+	// TODO: Delete all records for the table
+	// delete the table_info from the lookup table
+	table_l = delete_table_info( table_l, table_id );
+	// delete the table struct from the metadata array
+
+}
+
+/*
+ * This function will clear the table with the provided id
+ * from the database. This will remove all data but not the table.
+ * @param table_id - the id of the table to clear
+ * @return 0 if table succesfully cleared, -1 otherwise.
+ */
+int clear_table( int table_id ){
+    // In table metadata structure array remove the data types and key indices for given id
+	t_schema = get_table_schema( table_id );
+	memset(t_schema->data_types, 0, t_schema->data_types_size*sizeof(int));
+	memset(t_schema->key_indices, 0, t_schema->key_indices_size*sizeof(int));
+	free(data_types);
+	free(key_indices);
+    // TODO: delete all of the records for the table
+
+    // clear the table bin information from lookup table
+    clear_table_bin( table_l, table_id );
     return 0;
 }
 
-int write_table_schema(char * db_loc){
-    FILE *table_metadata;
-    int db_loc_len = strlen(db_loc) + TABLE_METADATA_FILE_LEN;
-    char *table_file = malloc(db_loc_len*sizeof(char));
-    memset(table_file, 0, db_loc_len*sizeof(char));
-    strcat(table_file, db_loc);
-    strcat(table_file, TABLE_METADATA_FILE);
-    table_metadata = fopen(table_file,"wb");
-    if(table_metadata == NULL){
-        fprintf(stderr,"ERROR: write_table_schema invalid table metadata file %s\n",db_loc);
-        return -1;
-    }
-
-    fwrite(&(all_table_schemas->last_made_id), sizeof(int), 1, table_metadata);
-    fwrite(&(all_table_schemas->table_count), sizeof(int), 1, table_metadata);
-    for(int i = 0; i < all_table_schemas->table_count; i++){
-        fwrite(&(all_table_schemas->tables[i].id), sizeof(int), 1, table_metadata);
-        fwrite(&(all_table_schemas->tables[i].data_types_size), sizeof(int), 1, table_metadata);
-        fwrite(all_table_schemas->tables[i].data_types, sizeof(int), table->data_types_size, table_metadata);
-        fwrite(&(all_table_schemas->tables[i].key_indices_size), sizeof(int), 1, table_metadata);
-        fwrite(all_table_schemas->tables[i].key_indices, sizeof(int), table->key_indices_size, table_metadata);
-        free(all_table_schemas->tables[i].data_types);
-        free(all_table_schemas->tables[i].key_indices);
-        free(&(all_table_schemas->tables[i]));
-    }
-    free(all_table_schemas->tables);
-    free(all_table_schemas);
+/*
+ * This will add a table to the database with the provided data types and
+ * primary key.
+ * @param data_types - an integer array representing the data types stored
+                       in a tupler in the table.
+ * @param key_indices - an interger array representing the indicies that
+                        make up the parimary key. The order of the indicies
+						in this array deternmine the ordering of the attributes
+						in the primary key.
+ * @param data_types_size - the size of the data types array
+ * @param key_indices_size - the size of the key indicies array.
+ * @return the id of the table created, -1 upon error.
+ */
+int add_table( int * data_types, int * key_indices, int data_types_size, int key_indices_size ){
+	//TODO: reacllocate the table_schema_array->tables array to accomodate the new table
+	int end_indx = all_table_schemas->table_count;
+   	int new_id = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->last_made_id+1;
+   	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
+   	manage_all_schema_array( (all_table_schemas->table_count+1),true );
+   	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
+   	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
+   	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
+   	all_table_schemas->table_count++;
+    return new_id;
 }
-
 
 /*
  * Just for testing. 
@@ -356,6 +468,10 @@ int main(int argc, char const *argv[])
 		}
 		update_lookup_table(table_l, 1, 1, 15, 76);
 		print_lookup_table( table_l );
+		printf("----------------------\n");
+		clear_table_bin( table_l, 1 );
+		print_lookup_table( table_l );
+		printf("----------------------\n");
 
 		write_lookup_table( table_l, db_path );
 		terminate_database();
