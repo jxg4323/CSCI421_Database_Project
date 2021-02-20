@@ -298,7 +298,7 @@ int write_table_schema(char * db_loc){
 int main(int argc, char const *argv[])
 {
 	// needed to start
-	char db_path[] = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
+	char db_path[] = "/home/stu3/s8/amf3379/Courses/CS421/Project_Test/";
 	int page_size = 25;
 	int buffer_size = 50;
 	bool restart_flag = false;
