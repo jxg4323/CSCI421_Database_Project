@@ -470,7 +470,7 @@ void init_page_buffer(){
 int request_page_in_buffer( int page_id ){
 	int loc = -1;
 	// check if page is already in buffer
-	for( int i = 0; i < page_buffer->buffer_size; i++){
+	for( int i = 0; i < page_buffer->num_of_pages; i++){
 		if ( page_buffer->pages[i].page_id == page_id ){ 
 			loc = i;
 		}
@@ -526,13 +526,13 @@ bool check_buffer_status( ){
 int remove_least_used_page( ){
 	int least_loc = -1;
 	int smallest = INT_MAX;
-	for( int i = 0; i < page_buffer->buffer_size; i++){
+	for( int i = 0; i < page_buffer->num_of_pages; i++){
 		if ( smallest > page_buffer->pages[i].req_count ){ 
 			smallest = page_buffer->pages[i].req_count;
 			least_loc = i;
 		}
 	}
-	if( write_page( &(page_buffer->pages[least_loc]()) ) >= 0 ){
+	if( write_page( &(page_buffer->pages[least_loc]) ) >= 0 ){
 		// reset the page_buffer location to base values a.k.a its available now
 		page_buffer->pages[least_loc].page_id = -1;
 		page_buffer->pages[least_loc].req_count = -1;
@@ -547,7 +547,7 @@ int remove_least_used_page( ){
  * Return location in buffer o.w. -1 for failure.
  */
 int get_open_spot(){
-	for( int i = 0; i < page_buffer->buffer_size; i++){
+	for( int i = 0; i < page_buffer->num_of_pages; i++){
 		if ( page_buffer->pages[i].page_id == -1 ){ 
 			return i;
 		}
@@ -571,7 +571,7 @@ int write_page( page_info* page ){
 
 	fp = fopen(page_file, "wb");
 	if( fp == NULL ){
-		fprintf(stderr, "ERROR: write_page, invalid page file %s\n", page_info);
+		fprintf(stderr, "ERROR: write_page, invalid page file %s\n", page_file);
 		return -1;
 	}
 	fwrite(&(page->page_id),sizeof(int),1,fp);
@@ -602,7 +602,7 @@ int read_page( int page_id, page_info* page ){
 
 	fp = fopen(page_file, "rb");
 	if( fp == NULL ){
-		fprintf(stderr, "ERROR: read_page, invalid page file %s\n", page_info);
+		fprintf(stderr, "ERROR: read_page, invalid page file %s\n", page_file);
 		return -1;
 	}
 	fread(&(page->page_id),sizeof(int),1,fp);
@@ -619,7 +619,7 @@ int read_page( int page_id, page_info* page ){
 int purge_buffer(){
 	int result = 0;
     // basically loop through the buffer array and write the pages to the filee system
-	for(int i = 0; i < page_buffer->buffer_size; i++){
+	for(int i = 0; i < page_buffer->num_of_pages; i++){
 		if( write_page( &(page_buffer->pages[i]) ) == -1){
 			result = -1;
 		}
@@ -628,7 +628,7 @@ int purge_buffer(){
 }
 
 void free_buffer(){
-	for(int i = 0; i < page_buffer->buffer_size; i++){
+	for(int i = 0; i < page_buffer->num_of_pages; i++){
 		free( page_buffer->pages[i].page_records );
 	}
 	free( page_buffer->pages );
