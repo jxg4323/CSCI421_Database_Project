@@ -259,12 +259,12 @@ int add_table_info(lookup_table *l_table, int table_id){
 	int end = (l_table->table_count == -1) ? 0 : l_table->table_count;
 	int count = (l_table->table_count == -1) ? 1 : l_table->table_count++;
 	// if the table already exists in the lookup table return -1
-	if( get_table_info( l_table, table_id ) >= 0 ){  
+	if( get_table_info( l_table, table_id ) >= 0 ){
 		return -1;
 	}
 	table_pages *new_table = (table_pages *)malloc(sizeof(table_pages));
 	init_table_pages(MIN_BIN_SIZE, table_id, new_table);
-	bool size_up = (l_table->table_count == -1) ? false : true; 
+	bool size_up = (l_table->table_count == -1) ? false : true;
 	manage_table_array(end+1, l_table, size_up);
 	// add new table to the end of the lookup table
 	l_table->table_data[end] = *new_table;

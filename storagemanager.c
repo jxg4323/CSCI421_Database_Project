@@ -122,6 +122,41 @@ int allocate_db_data(int page_size, int buf_size, char *db_loc){
     db_data->buffer_size = buf_size;
     db_data->db_location = (char *)malloc(db_loc_len*sizeof(char));
 	memset(db_data->db_location, 0, db_loc_len*sizeof(char));
+	memset(db_data->page_buffer, 0, buf_size*sizeof(char));
+}
+
+/*
+ * Allocate memory for local table_schema_array WITHOUT allocating
+ * memory for the array of structures.
+ */
+void allocate_all_schemas(){
+	all_table_schemas = (table_schema_array *)malloc(sizeof(table_schema_array));
+	all_table_schemas->last_made_id = -1;
+	all_table_schemas->table_count = -1;
+}
+
+/*
+ * Allocate structure array for the table schemas
+ */
+void manage_all_schema_array(int count, bool increase_size){
+	if( increase_size ){ // if True increase the size of the table_schemas
+		all_table_schemas->tables = realloc(all_table_schemas->tables, count*sizeof(table_data *));
+	}else{
+		all_table_schemas->tables = malloc(count*sizeof(table_data *));
+	}
+}
+
+/*
+ * Initialize the given structure with the correct id, type array length, and
+ * key indices array length. Also, allocate the memory required for the arrays.
+ */
+void init_table_schema(int t_id, int types_len, int key_len, struct table_data **t_schema, int table_index){
+    t_schema[table_index] = malloc(sizeof(table_data));
+	t_schema[table_index]->id = t_id;
+	t_schema[table_index]->data_types_size = types_len;
+	t_schema[table_index]->key_indices_size = key_len;
+	t_schema[table_index]->data_types = malloc(types_len*sizeof(int));
+	t_schema[table_index]->key_indices = malloc(key_len*sizeof(int));
 }
 
 /* 
@@ -191,50 +226,19 @@ void free_config( db_config *config ){
 }
 
 /*
- * Pretty print the database config file into text. 
+ * This will pruge the page buffer to disk.
+ * @return 0 on success, -1 on failure.
  */
-void pretty_print_db_config( db_config *config ){
-	printf("Page Size: %d, Buffer Size: %d, Database Path: %s\n", config->page_size, config->buffer_size, config->db_location);
+int purge_buffer(){
+    // basically loop through the buffer array and write the pages to the filee system
 }
 
-
-/*
- * Allocate memory for local table_schema_array WITHOUT allocating
- * memory for the array of structures.
- */
-void allocate_all_schemas(){
-	all_table_schemas = (table_schema_array *)malloc(sizeof(table_schema_array));
-	all_table_schemas->last_made_id = -1;
-	all_table_schemas->table_count = -1;
-}
-
-/*
- * Allocate structure array for the table schemas
- */
-void manage_all_schema_array(int count, bool increase_size){
-	if( increase_size ){ // if True increase the size of the table_schemas
-		all_table_schemas->tables = (table_data *)realloc(all_table_schemas->tables, count*sizeof(table_data));
-	}else{
-		all_table_schemas->tables = (table_data *)malloc(count*sizeof(table_data));
-	}
-}
-
-/*
- * Initialize the given structure with the correct id, type array length, and
- * key indices array length. Also, allocate the memory required for the arrays.
- */
-void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schema){
-	t_schema->id = t_id;
-	t_schema->data_types_size = types_len;
-	t_schema->key_indices_size = key_len;
-	t_schema->data_types = (int *)malloc(types_len*sizeof(int));
-	t_schema->key_indices = (int *)malloc(key_len*sizeof(int));
-}
 
 void free_table_schemas( table_schema_array* schemas ){
 	for( int i = 0; i < schemas->table_count; i++ ){
-		free( schemas->tables[i].data_types );
-		free( schemas->tables[i].key_indices );
+		free( schemas->tables[i]->data_types );
+		free( schemas->tables[i]->key_indices );
+		free( schemas->tables[i] );
 	}
 	free( schemas->tables );
 }
@@ -245,20 +249,20 @@ void free_table_schemas( table_schema_array* schemas ){
 void pretty_print_table_schemas( table_schema_array *schemas ){
 	printf(" Table Schemas \n");
 	for(int i = 0; i < schemas->table_count; i++){
-		printf("Table ID: %d Data types: [ ", schemas->tables[i].id);
-		for( int j = 0; j < schemas->tables[i].data_types_size; j++){
-			if( j == schemas->tables[i].data_types_size-1 ){
-				printf("%d ", schemas->tables[i].data_types[j]);
+		printf("Table ID: %d Data types: [ ", schemas->tables[i]->id);
+		for( int j = 0; j < schemas->tables[i]->data_types_size; j++){
+			if( j == schemas->tables[i]->data_types_size-1 ){
+				printf("%d ", schemas->tables[i]->data_types[j]);
 			}else{
-				printf("%d, ", schemas->tables[i].data_types[j]);
+				printf("%d, ", schemas->tables[i]->data_types[j]);
 			}
 		}
 		printf(" ], Key Indices: [ ");
-		for( int j = 0; j < schemas->tables[i].key_indices_size; j++){
-			if( j == schemas->tables[i].key_indices_size-1 ){
-				printf("%d ", schemas->tables[i].key_indices[j]);
+		for( int j = 0; j < schemas->tables[i]->key_indices_size; j++){
+			if( j == schemas->tables[i]->key_indices_size-1 ){
+				printf("%d ", schemas->tables[i]->key_indices[j]);
 			}else{
-				printf("%d, ", schemas->tables[i].key_indices[j]);
+				printf("%d, ", schemas->tables[i]->key_indices[j]);
 			}
 		}
 		printf(" ]\n");
@@ -283,6 +287,7 @@ int get_all_schemas(char * db_loc){
 	schema_fp = fopen(schema_file, "rb");
 	if( schema_fp == NULL){
 		fprintf(stderr, "ERROR: get_all_schemas invalid table metadata file %s\n", schema_file);
+		free(schema_file);
 		return -1;
 	}
 	fread(&(all_table_schemas->last_made_id),sizeof(int),1,schema_fp);
@@ -297,9 +302,9 @@ int get_all_schemas(char * db_loc){
 		fread(&types_len,sizeof(int),1,schema_fp);
 		fread(&key_len,sizeof(int),1,schema_fp);
 		// init structure for table schema
-		init_table_schema(t_id, types_len, key_len, &(all_table_schemas->tables[table_indx]));
-		fread((all_table_schemas->tables[table_indx]).data_types,sizeof(int),types_len,schema_fp);
-		fread((all_table_schemas->tables[table_indx]).key_indices,sizeof(int),key_len,schema_fp);	
+		init_table_schema(t_id, types_len, key_len, all_table_schemas->tables, table_indx);
+		fread((all_table_schemas->tables[table_indx])->data_types,sizeof(int),types_len,schema_fp);
+		fread((all_table_schemas->tables[table_indx])->key_indices,sizeof(int),key_len,schema_fp);
 		// next line
 		if(feof(schema_fp) || table_indx == (all_table_schemas->table_count-1)){ //read until end of file character or there aren't any more tables
 			break;
@@ -328,16 +333,17 @@ int write_all_schemas(char * db_loc){
 	wFile = fopen(schema_file, "wb");
 	if( wFile == NULL){
 		fprintf(stderr, "ERROR: write_all_schemas invalid table metadata file %s\n", schema_file);
+		free(schema_file);
 		return -1;
 	}
 	fwrite(&(all_table_schemas->last_made_id),sizeof(int),1,wFile);
 	fwrite(&(all_table_schemas->table_count),sizeof(int),1,wFile);
 	for( int i = 0; i < all_table_schemas->table_count; i++){
-		fwrite(&(all_table_schemas->tables[i].id),sizeof(int),1,wFile);
-		fwrite(&(all_table_schemas->tables[i].data_types_size),sizeof(int),1,wFile);
-		fwrite(&(all_table_schemas->tables[i].key_indices_size),sizeof(int),1,wFile);
-		fwrite(all_table_schemas->tables[i].data_types,sizeof(int),all_table_schemas->tables[i].data_types_size*sizeof(int),wFile);
-		fwrite(all_table_schemas->tables[i].key_indices,sizeof(int),all_table_schemas->tables[i].key_indices_size*sizeof(int),wFile);
+		fwrite(&(all_table_schemas->tables[i]->id),sizeof(int),1,wFile);
+		fwrite(&(all_table_schemas->tables[i]->data_types_size),sizeof(int),1,wFile);
+		fwrite(&(all_table_schemas->tables[i]->key_indices_size),sizeof(int),1,wFile);
+		fwrite(all_table_schemas->tables[i]->data_types,sizeof(int),all_table_schemas->tables[i]->data_types_size*sizeof(int),wFile);
+		fwrite(all_table_schemas->tables[i]->key_indices,sizeof(int),all_table_schemas->tables[i]->key_indices_size*sizeof(int),wFile);
 	}
 	free( schema_file );
 	fclose( wFile );
@@ -351,8 +357,8 @@ int write_all_schemas(char * db_loc){
  */
 table_data* get_table_schema( int table_id ){
 	for(int i = 0; i < all_table_schemas->table_count; i++){
-		if ( all_table_schemas->tables[i].id == table_id ){
-			return &(all_table_schemas->tables[i]);
+		if ( all_table_schemas->tables[i]->id == table_id ){
+			return all_table_schemas->tables[i];
 		}
 	}
 	return NULL;
@@ -366,16 +372,40 @@ table_data* get_table_schema( int table_id ){
  * @return 0 if table succesfully dropped, -1 otherwise.
  */
 int drop_table( int table_id ){
-	// TODO: Delete all records for the table
-	// delete the table_info from the lookup table
-	table_l = delete_table_info( table_l, table_id );
+	// delete all records for the table
+    int cleared = 0 ;
+    if(cleared == -1){ return -1; }
 	// delete the table struct from the metadata array
-	table_data * t_schema = (table_data *)malloc(sizeof(table_data));
-	t_schema = get_table_schema( table_id );
-	memset(t_schema->data_types, 0, t_schema->data_types_size*sizeof(int));
-	memset(t_schema->key_indices, 0, t_schema->key_indices_size*sizeof(int));
-	free(t_schema->data_types);
-	free(t_schema->key_indices);
+    int table_count = all_table_schemas->table_count;
+    int offset = 0;
+    table_data **table_array = malloc(sizeof(table_data *) * (table_count-1));
+    for(int i = 0; i < table_count; i++){
+        if(table_id != all_table_schemas->tables[i]->id){
+            table_array[i-offset] = malloc(sizeof(table_data));
+            table_array[i-offset]->id = all_table_schemas->tables[i]->id;
+            table_array[i-offset]->data_types_size = all_table_schemas->tables[i]->data_types_size;
+            table_array[i-offset]->key_indices_size = all_table_schemas->tables[i]->key_indices_size;
+            table_array[i-offset]->data_types = malloc(sizeof(int) * table_array[i-offset]->data_types_size);
+            for(int j = 0; j < table_array[i-offset]->data_types_size; j++){
+                table_array[i-offset]->data_types[j] = all_table_schemas->tables[i]->data_types[j];
+            }
+            table_array[i-offset]->key_indices = malloc(sizeof(int) * table_array[i-offset]->key_indices_size);
+            for(int j = 0; j < table_array[i-offset]->key_indices_size; j++){
+                table_array[i-offset]->key_indices[j] = all_table_schemas->tables[i]->key_indices[j];
+            }
+        } else {
+            offset = 1;
+        }
+        free(all_table_schemas->tables[i]->key_indices);
+        free(all_table_schemas->tables[i]->data_types);
+        free(all_table_schemas->tables[i]);
+    }
+    all_table_schemas->table_count = table_count - 1;
+    free(all_table_schemas->tables);
+    all_table_schemas->tables = table_array;
+    // delete the table_info from the lookup table
+    table_l = delete_table_info(table_l, table_id);
+    return 0;
 }
 
 /*
@@ -385,9 +415,36 @@ int drop_table( int table_id ){
  * @return 0 if table succesfully cleared, -1 otherwise.
  */
 int clear_table( int table_id ){
-	
-    // TODO: delete all of the records for the table
+    // In table metadata structure array remove the data types and key indices for given id
+    // delete all of the records for the table
+    if(get_table_info(table_l, table_id) == -1){ return -1; }
 
+/*    int key_indices_size = 0;
+    for(int i = 0; i < all_table_schemas->table_count; i++){
+        if(table_id = all_table_schemas->tables[i].id){
+            key_indices_size = all_table_schemas->tables[i].key_indices_size;
+        }
+    }
+
+
+    union record_item *key_values = malloc(sizeof(union record_item) * key_indices_size);
+    union record_item **records;
+    int num_records = get_records(table_id, &records);
+    if (num_records > -1) {
+        for (int i = 0; i < num_records; i++) {
+            for(int j = 0; j < key_indices_size; j++){
+                key_values[j] = records[i][j];
+            }
+            remove_record(table_id, key_values);
+            free(&(records[i]));
+        }
+    } else {
+        free(records);
+        free(key_values);
+        return -1;
+    }
+    free(records);
+    free(key_values);*/
     // clear the table bin information from lookup table
     clear_table_bin( table_l, table_id );
     return 0;
@@ -410,14 +467,16 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
 	//TODO: reacllocate the table_schema_array->tables array to accomodate the new table
 	int end_indx = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->table_count;
    	int new_id = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->last_made_id+1;
+    table_data *table = get_table_schema(new_id);
+    if(table != NULL ){ return -1; }
    	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
-   	manage_all_schema_array( (end_indx+1),true );
-   	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
-   	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
-   	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
+   	manage_all_schema_array( (all_table_schemas->table_count+1),true );
+   	init_table_schema( new_id, data_types_size, key_indices_size, all_table_schemas->tables, end_indx );
+   	memcpy( all_table_schemas->tables[end_indx]->data_types, data_types, data_types_size*sizeof(int) );
+   	memcpy( all_table_schemas->tables[end_indx]->key_indices, key_indices, key_indices_size*sizeof(int) );
    	all_table_schemas->last_made_id = new_id;
    	all_table_schemas->table_count = end_indx + 1;
-   	add_table_info( table_l, new_id );
+   	add_table_info(table_l, new_id);
     return new_id;
 }
 
@@ -441,7 +500,7 @@ int get_page( int page_id, union record_item *** page ){
 }
 
 int get_record( int table_id, union record_item * key_values, union record_item ** data ){
-	
+
 }
 
 int insert_record( int table_id, union record_item * record ){
@@ -453,13 +512,13 @@ int update_record( int table_id, union record_item * record ){
 }
 
 int remove_record( int table_id, union record_item * key_values ){
-	
+
 }
 
 /*
  * Initialize array of records for the page, due to the fact theat
- * the page isn't aware of the table structure. The page doesn't 
- * know how many record_items are in a record. The buffer only cares 
+ * the page isn't aware of the table structure. The page doesn't
+ * know how many record_items are in a record. The buffer only cares
  * about what records are there.
  */
 void init_page_layout( int pid, int record_num, page_info* page ){
@@ -469,7 +528,7 @@ void init_page_layout( int pid, int record_num, page_info* page ){
 }
 /*
  * Initialize global page buffer pointer and allocate the number
- * of pages in memory and initialize the pages_id to -1 and record 
+ * of pages in memory and initialize the pages_id to -1 and record
  * count to floor( page_size / sizeof(record_item) ).
  */
 void init_page_buffer(){
@@ -483,7 +542,7 @@ void init_page_buffer(){
 }
 
 /*
- * Read data in a page to the buffer. If there isn't enough 
+ * Read data in a page to the buffer. If there isn't enough
  * room in the buffer remove the least requested page from
  * the buffer. Then add the page to the buffer, increasing
  * its req count in the process. If the page is already in
@@ -495,16 +554,16 @@ int request_page_in_buffer( int page_id ){
 	int loc = -1;
 	// check if page is already in buffer
 	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if ( page_buffer->pages[i].page_id == page_id ){ 
+		if ( page_buffer->pages[i].page_id == page_id ){
 			loc = i;
 		}
 	}
-	if( loc >= 0 ){ // if page is in buffer increase req count 
+	if( loc >= 0 ){ // if page is in buffer increase req count
 		page_buffer->pages[loc].req_count++;
 		return loc;
 	}else{ // if page isn't in buffer
 		int free_spot = -1;
-		if( check_buffer_status() ){ 
+		if( check_buffer_status() ){
 			free_spot = remove_least_used_page();
 			add_page_to_buffer( page_id, free_spot );
 		}else{
@@ -521,7 +580,7 @@ int request_page_in_buffer( int page_id ){
  * to the function.
  * Return 0 with success and -1 for failure.
  */
-int add_page_to_buffer( int page_id, int loc ){	
+int add_page_to_buffer( int page_id, int loc ){
 	int result = 0;
 	// read in the records to array
 	result = read_page( page_id, &(page_buffer->pages[loc]) );
@@ -543,8 +602,8 @@ bool check_buffer_status( ){
 }
 
 /*
- * Remove the least used page from the buffer. Find the least used page 
- * and remove it. Set its page_id, record_count, req_count to -1 and 
+ * Remove the least used page from the buffer. Find the least used page
+ * and remove it. Set its page_id, record_count, req_count to -1 and
  * memset its record array to null.
  * Return location of removed page, showing its available and -1 o.w.
  */
@@ -552,7 +611,7 @@ int remove_least_used_page( ){
 	int least_loc = -1;
 	int smallest = INT_MAX;
 	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if ( smallest > page_buffer->pages[i].req_count ){ 
+		if ( smallest > page_buffer->pages[i].req_count ){
 			smallest = page_buffer->pages[i].req_count;
 			least_loc = i;
 		}
@@ -573,7 +632,7 @@ int remove_least_used_page( ){
  */
 int get_open_spot(){
 	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if ( page_buffer->pages[i].page_id == -1 ){ 
+		if ( page_buffer->pages[i].page_id == -1 ){
 			return i;
 		}
 	}
@@ -701,9 +760,9 @@ int main(int argc, char const *argv[])
 	}else{
 		// for( int i = 0; i < table_count; i++ ){
 		// 	for(int j = 0; j < arr_size; j++ ){
-		// 		((table_l->table_data)[i]).byte_info[j][0] = j+1; 
-		// 		((table_l->table_data)[i]).byte_info[j][1] = j+2; 
-		// 		((table_l->table_data)[i]).byte_info[j][2] = j+3; 
+		// 		((table_l->table_data)[i]).byte_info[j][0] = j+1;
+		// 		((table_l->table_data)[i]).byte_info[j][1] = j+2;
+		// 		((table_l->table_data)[i]).byte_info[j][2] = j+3;
 		// 	}
 		// }
 		// print_lookup_table( table_l );
