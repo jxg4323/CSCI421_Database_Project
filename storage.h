@@ -42,7 +42,7 @@ typedef struct table_data{
 typedef struct table_schema_array{
     int last_made_id;
     int table_count;
-    table_data *tables;
+    table_data **tables;
 } table_schema_array;
 
 // Page Buffer Information 
@@ -72,7 +72,7 @@ void allocate_all_schemas();
 void manage_all_schema_array(int count, bool increase_size);
 table_data* get_table_schema( int table_id );
 void pretty_print_table_schemas( table_schema_array *schemas );
-void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schema);
+void init_table_schema(int t_id, int types_len, int key_len, table_data **t_schema, int table_index);
 void free_table_schemas();
 
 

@@ -150,9 +150,9 @@ void allocate_all_schemas(){
  */
 void manage_all_schema_array(int count, bool increase_size){
 	if( increase_size ){ // if True increase the size of the table_schemas
-		all_table_schemas->tables = (table_data *)realloc(all_table_schemas->tables, count*sizeof(table_data));
+		all_table_schemas->tables = realloc(all_table_schemas->tables, count*sizeof(table_data *));
 	}else{
-		all_table_schemas->tables = (table_data *)malloc(count*sizeof(table_data));
+		all_table_schemas->tables = malloc(count*sizeof(table_data *));
 	}
 }
 
@@ -160,12 +160,13 @@ void manage_all_schema_array(int count, bool increase_size){
  * Initialize the given structure with the correct id, type array length, and
  * key indices array length. Also, allocate the memory required for the arrays.
  */
-void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schema){
-	t_schema->id = t_id;
-	t_schema->data_types_size = types_len;
-	t_schema->key_indices_size = key_len;
-	t_schema->data_types = malloc(types_len*sizeof(int));
-	t_schema->key_indices = malloc(key_len*sizeof(int));
+void init_table_schema(int t_id, int types_len, int key_len, struct table_data **t_schema, int table_index){
+    t_schema[table_index] = malloc(sizeof(table_data) + (sizeof(int) * (types_len + key_len)));
+	t_schema[table_index]->id = t_id;
+	t_schema[table_index]->data_types_size = types_len;
+	t_schema[table_index]->key_indices_size = key_len;
+	t_schema[table_index]->data_types = malloc(types_len*sizeof(int));
+	t_schema[table_index]->key_indices = malloc(key_len*sizeof(int));
 }
 
 /* 
@@ -253,8 +254,9 @@ int purge_buffer(){
 
 void free_table_schemas( table_schema_array* schemas ){
 	for( int i = 0; i < schemas->table_count; i++ ){
-		free( schemas->tables[i].data_types );
-		free( schemas->tables[i].key_indices );
+		free( schemas->tables[i]->data_types );
+		free( schemas->tables[i]->key_indices );
+		free( schemas->tables[i] );
 	}
 	free( schemas->tables );
 }
@@ -265,20 +267,20 @@ void free_table_schemas( table_schema_array* schemas ){
 void pretty_print_table_schemas( table_schema_array *schemas ){
 	printf(" Table Schemas \n");
 	for(int i = 0; i < schemas->table_count; i++){
-		printf("Table ID: %d Data types: [ ", schemas->tables[i].id);
-		for( int j = 0; j < schemas->tables[i].data_types_size; j++){
-			if( j == schemas->tables[i].data_types_size-1 ){
-				printf("%d ", schemas->tables[i].data_types[j]);
+		printf("Table ID: %d Data types: [ ", schemas->tables[i]->id);
+		for( int j = 0; j < schemas->tables[i]->data_types_size; j++){
+			if( j == schemas->tables[i]->data_types_size-1 ){
+				printf("%d ", schemas->tables[i]->data_types[j]);
 			}else{
-				printf("%d, ", schemas->tables[i].data_types[j]);
+				printf("%d, ", schemas->tables[i]->data_types[j]);
 			}
 		}
 		printf(" ], Key Indices: [ ");
-		for( int j = 0; j < schemas->tables[i].key_indices_size; j++){
-			if( j == schemas->tables[i].key_indices_size-1 ){
-				printf("%d ", schemas->tables[i].key_indices[j]);
+		for( int j = 0; j < schemas->tables[i]->key_indices_size; j++){
+			if( j == schemas->tables[i]->key_indices_size-1 ){
+				printf("%d ", schemas->tables[i]->key_indices[j]);
 			}else{
-				printf("%d, ", schemas->tables[i].key_indices[j]);
+				printf("%d, ", schemas->tables[i]->key_indices[j]);
 			}
 		}
 		printf(" ]\n");
@@ -318,9 +320,9 @@ int get_all_schemas(char * db_loc){
 		fread(&types_len,sizeof(int),1,schema_fp);
 		fread(&key_len,sizeof(int),1,schema_fp);
 		// init structure for table schema
-		init_table_schema(t_id, types_len, key_len, &(all_table_schemas->tables[table_indx]));
-		fread((all_table_schemas->tables[table_indx]).data_types,sizeof(int),types_len,schema_fp);
-		fread((all_table_schemas->tables[table_indx]).key_indices,sizeof(int),key_len,schema_fp);
+		init_table_schema(t_id, types_len, key_len, all_table_schemas->tables, table_indx);
+		fread((all_table_schemas->tables[table_indx])->data_types,sizeof(int),types_len,schema_fp);
+		fread((all_table_schemas->tables[table_indx])->key_indices,sizeof(int),key_len,schema_fp);
 		// next line
 		if(feof(schema_fp) || table_indx == (all_table_schemas->table_count-1)){ //read until end of file character or there aren't any more tables
 			break;
@@ -355,11 +357,11 @@ int write_all_schemas(char * db_loc){
 	fwrite(&(all_table_schemas->last_made_id),sizeof(int),1,wFile);
 	fwrite(&(all_table_schemas->table_count),sizeof(int),1,wFile);
 	for( int i = 0; i < all_table_schemas->table_count; i++){
-		fwrite(&(all_table_schemas->tables[i].id),sizeof(int),1,wFile);
-		fwrite(&(all_table_schemas->tables[i].data_types_size),sizeof(int),1,wFile);
-		fwrite(&(all_table_schemas->tables[i].key_indices_size),sizeof(int),1,wFile);
-		fwrite(all_table_schemas->tables[i].data_types,sizeof(int),all_table_schemas->tables[i].data_types_size*sizeof(int),wFile);
-		fwrite(all_table_schemas->tables[i].key_indices,sizeof(int),all_table_schemas->tables[i].key_indices_size*sizeof(int),wFile);
+		fwrite(&(all_table_schemas->tables[i]->id),sizeof(int),1,wFile);
+		fwrite(&(all_table_schemas->tables[i]->data_types_size),sizeof(int),1,wFile);
+		fwrite(&(all_table_schemas->tables[i]->key_indices_size),sizeof(int),1,wFile);
+		fwrite(all_table_schemas->tables[i]->data_types,sizeof(int),all_table_schemas->tables[i]->data_types_size*sizeof(int),wFile);
+		fwrite(all_table_schemas->tables[i]->key_indices,sizeof(int),all_table_schemas->tables[i]->key_indices_size*sizeof(int),wFile);
 	}
 	free( schema_file );
 	fclose( wFile );
@@ -373,8 +375,8 @@ int write_all_schemas(char * db_loc){
  */
 table_data* get_table_schema( int table_id ){
 	for(int i = 0; i < all_table_schemas->table_count; i++){
-		if ( all_table_schemas->tables[i].id == table_id ){
-			return &(all_table_schemas->tables[i]);
+		if ( all_table_schemas->tables[i]->id == table_id ){
+			return all_table_schemas->tables[i];
 		}
 	}
 	return NULL;
@@ -394,28 +396,28 @@ int drop_table( int table_id ){
 	// delete the table struct from the metadata array
     int table_count = all_table_schemas->table_count;
     int offset = 0;
-    table_data *table_array = malloc(sizeof(table_data) * (table_count-1));
+    table_data **table_array = malloc(sizeof(table_data *) * (table_count-1));
     for(int i = 0; i < table_count; i++){
-        if(table_id != all_table_schemas->tables[i].id){
-            table_data *table = malloc(sizeof(table_data));
-            table->id = all_table_schemas->tables[i].id;
-            table->data_types_size = all_table_schemas->tables[i].data_types_size;
-            table->key_indices_size = all_table_schemas->tables[i].key_indices_size;
-            table->data_types = malloc(sizeof(int) * table->data_types_size);
-            for(int j = 0; j < table->data_types_size; j++){
-                table->data_types[j] = all_table_schemas->tables[i].data_types[j];
+        if(table_id != all_table_schemas->tables[i]->id){
+            table_array[i-offset] =
+                malloc(sizeof(struct table_data) + (sizeof(int) * (all_table_schemas->tables[i]->data_types_size + all_table_schemas->tables[i]->key_indices_size)));
+            table_array[i-offset]->id = all_table_schemas->tables[i]->id;
+            table_array[i-offset]->data_types_size = all_table_schemas->tables[i]->data_types_size;
+            table_array[i-offset]->key_indices_size = all_table_schemas->tables[i]->key_indices_size;
+            table_array[i-offset]->data_types = malloc(sizeof(int) * table_array[i-offset]->data_types_size);
+            for(int j = 0; j < table_array[i-offset]->data_types_size; j++){
+                table_array[i-offset]->data_types[j] = all_table_schemas->tables[i]->data_types[j];
             }
-            table->key_indices = malloc(sizeof(int) * table->key_indices_size);
-            for(int j = 0; j < table->key_indices_size; j++){
-                table->key_indices[j] = all_table_schemas->tables[i].key_indices[j];
+            table_array[i-offset]->key_indices = malloc(sizeof(int) * table_array[i-offset]->key_indices_size);
+            for(int j = 0; j < table_array[i-offset]->key_indices_size; j++){
+                table_array[i-offset]->key_indices[j] = all_table_schemas->tables[i]->key_indices[j];
             }
-            table_array[i-offset] = *table;
         } else {
             offset = 1;
         }
-        free(all_table_schemas->tables[i].key_indices);
-        free(all_table_schemas->tables[i].data_types);
-        free(&(all_table_schemas->tables[i]));
+        free(all_table_schemas->tables[i]->key_indices);
+        free(all_table_schemas->tables[i]->data_types);
+        free(all_table_schemas->tables[i]);
     }
     all_table_schemas->table_count = table_count - 1;
     free(all_table_schemas->tables);
@@ -488,9 +490,9 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
     if(table != NULL ){ return -1; }
    	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
    	manage_all_schema_array( (all_table_schemas->table_count+1),true );
-   	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
-   	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
-   	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
+   	init_table_schema( new_id, data_types_size, key_indices_size, all_table_schemas->tables, end_indx );
+   	memcpy( all_table_schemas->tables[end_indx]->data_types, data_types, data_types_size*sizeof(int) );
+   	memcpy( all_table_schemas->tables[end_indx]->key_indices, key_indices, key_indices_size*sizeof(int) );
    	all_table_schemas->last_made_id = new_id;
    	all_table_schemas->table_count = end_indx + 1;
    	add_table_info(table_l, new_id);
@@ -558,15 +560,15 @@ int main(int argc, char const *argv[])
         print_lookup_table( table_l );
         pretty_print_table_schemas(all_table_schemas);
         printf("----------DROP TABLE----------\n");
-        drop_table(0);
+        //drop_table(0);
         pretty_print_table_schemas(all_table_schemas);
         print_lookup_table( table_l );
         printf("----------CLEAR TABLE----------\n");
-        clear_table(1);
+        //clear_table(1);
         pretty_print_table_schemas(all_table_schemas);
         print_lookup_table( table_l );
-        free(data_types);
-        free(key_indices);
+        // free(data_types);
+        // free(key_indices);
 		terminate_database();
 	}
 	return 0;
