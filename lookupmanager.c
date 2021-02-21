@@ -131,7 +131,7 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 	wFile = fopen(lookup_file, "wb");
 	if(wFile == NULL){
 		fprintf(stderr, "ERROR: write_lookup_table, invalid lookup file %s\n", db_loc);
-		return false;
+		return -1;
 	}
 	fwrite(&(lookup_table->table_count), sizeof(int), 1, wFile);
 	for( int i = 0; i < lookup_table->table_count; i++ ){

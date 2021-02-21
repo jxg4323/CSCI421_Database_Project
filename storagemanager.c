@@ -462,11 +462,17 @@ void init_page_buffer(){
 /*
  * Read data in a page to the buffer. If there isn't enough 
  * room in the buffer remove the least requested page from
- * the buffer.
+ * the buffer. Then add the page to the buffer, increasing
+ * its req count in the process. If the page is already in
+ * the buffer then return the location of it in the array
+ * and increment its req_count.
  * If page is already in the array then return its location o.w. -1
  */
 int request_page_in_buffer( int page_id ){
-	
+	if( check_buffer_status() ){ 
+		int free_spot = remove_least_used_page();
+		
+	}
 }
 
 /*
@@ -500,7 +506,22 @@ bool check_buffer_status( ){
  * Return location of removed page, showing its available and -1 o.w.
  */
 int remove_least_used_page( ){
-	// 
+	int least_loc = -1;
+	int smallest = INT_MAX;
+	for( int i = 0; i < page_buffer->buffer_size; i++){
+		if ( smallest > page_buffer->pages[i].req_count ){ 
+			smallest = page_buffer->pages[i].req_count;
+			least_loc = i;
+		}
+	}
+	if( write_page( &(page_buffer->pages[least_loc]()) ) >= 0 ){
+		// reset the page_buffer location to base values a.k.a its available now
+		page_buffer->pages[least_loc].page_id = -1;
+		page_buffer->pages[least_loc].req_count = -1;
+		memset(page_buffer->pages[least_loc].page_records, 0, page_buffer->pages[least_loc].num_of_records*sizeof(r_item));
+	}
+
+	return least_loc;
 }
 
 /*
@@ -508,8 +529,40 @@ int remove_least_used_page( ){
  * Return location in buffer o.w. -1 for failure.
  */
 int get_open_spot(){
-	// open spot should always be the end of the buffer 
-		// but at the beginning they are all open !!!!! *****
+	for( int i = 0; i < page_buffer->buffer_size; i++){
+		if ( page_buffer->pages[i].page_id == -1 ){ 
+			return i;
+		}
+	}
+	return -1;
+}
+
+/*
+ * Write page information to the corresponding page file
+ * on the disk.
+ * Return 0 with success and -1 for failure.
+ */
+int write_page( page_info* page ){
+	FILE* fp;
+	int file_len = strlen(db_data->db_location) + PAGE_FILE_LEN + MAX_PAGES_FILE_CHARS;
+	char *page_file = (char *)malloc(file_len*sizeof(char));
+	memset(page_file, 0, file_len*sizeof(char));
+	strcat(page_file, db_data->db_location);
+	strcat(page_file, PAGE_FILENAME_BEGIN);
+	sprintf(page_file, "%s_%d",page_file,page->page_id);
+
+	fp = fopen(page_file, "wb");
+	if( fp == NULL ){
+		fprintf(stderr, "ERROR: write_page, invalid page file %s\n", page_info);
+		return -1;
+	}
+	fwrite(&(page->page_id),sizeof(int),1,fp);
+	fwrite(&(page->num_of_records),sizeof(int),1,fp);
+	fwrite(page->page_records,sizeof(r_item),page->num_of_records,fp);
+
+	free( page_file );
+	fclose( fp );
+	return 0;
 }
 
 /*

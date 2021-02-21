@@ -12,6 +12,7 @@ Professor: Scott Johnson
 #include <stdlib.h>
 #include <unistd.h>     /* read library call comes from here */
 #include <string.h>
+#include <limits.h>
 #include <math.h>
 
 #define BASE_TABLE_PAGES_SIZE 20
@@ -22,6 +23,7 @@ Professor: Scott Johnson
 #define TABLE_METADATA_FILE_LEN 14
 #define PAGE_FILENAME_BEGIN "page" // all pages will start with 
 #define PAGE_FILE_LEN 4
+#define MAX_PAGES_FILE_CHARS 3
 
 typedef union record_item r_item;
 
