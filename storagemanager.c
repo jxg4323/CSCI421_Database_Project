@@ -469,9 +469,26 @@ void init_page_buffer(){
  * If page is already in the array then return its location o.w. -1
  */
 int request_page_in_buffer( int page_id ){
-	if( check_buffer_status() ){ 
-		int free_spot = remove_least_used_page();
-		
+	int loc = -1;
+	// check if page is already in buffer
+	for( int i = 0; i < page_buffer->buffer_size; i++){
+		if ( page_buffer->pages[i].page_id == page_id ){ 
+			loc = i;
+		}
+	}
+	if( loc >= 0 ){ // if page is in buffer increase req count 
+		page_buffer->pages[loc].req_count++;
+		return loc;
+	}else{ // if page isn't in buffer
+		int free_spot = -1;
+		if( check_buffer_status() ){ 
+			free_spot = remove_least_used_page();
+			add_page_to_buffer( page_id, free_spot );
+		}else{
+			free_spot = get_open_spot();
+			add_page_to_buffer( page_id, free_spot );
+		}
+		page_buffer->pages[free_spot].req_count++;
 	}
 }
 
@@ -481,8 +498,10 @@ int request_page_in_buffer( int page_id ){
  * Return 0 with success and -1 for failure.
  */
 int add_page_to_buffer( int page_id, int loc ){	
+	int result = 0;
 	// read in the records to array
-	// set page_id
+	result = read_page( page_id, &(page_buffer->pages[loc]) );
+	return result;
 }
 
 /*
@@ -558,6 +577,7 @@ int write_page( page_info* page ){
 	}
 	fwrite(&(page->page_id),sizeof(int),1,fp);
 	fwrite(&(page->num_of_records),sizeof(int),1,fp);
+	// DON'T write req_count only use when page is in buffer.
 	fwrite(page->page_records,sizeof(r_item),page->num_of_records,fp);
 
 	free( page_file );
@@ -566,11 +586,53 @@ int write_page( page_info* page ){
 }
 
 /*
- * This will pruge the page buffer to disk.
+ * Read page information from disk into the passed structure.
+ * Treats the records as a one dimensional array of record_items
+ * because the page structure doesn't care about the table structure
+ * for the records.
+ * Return 0 for success and -1 for failure.
+ */
+int read_page( int page_id, page_info* page ){
+	FILE* fp;
+	int file_len = strlen(db_data->db_location) + PAGE_FILE_LEN + MAX_PAGES_FILE_CHARS;
+	char *page_file = (char *)malloc(file_len*sizeof(char));
+	memset(page_file, 0, file_len*sizeof(char));
+	strcat(page_file, db_data->db_location);
+	strcat(page_file, PAGE_FILENAME_BEGIN);
+	sprintf(page_file, "%s_%d",page_file,page->page_id);
+
+	fp = fopen(page_file, "rb");
+	if( fp == NULL ){
+		fprintf(stderr, "ERROR: read_page, invalid page file %s\n", page_info);
+		return -1;
+	}
+	fread(&(page->page_id),sizeof(int),1,fp);
+	fread(&(page->num_of_records),sizeof(int),1,fp);
+	fread(page->page_records,sizeof(r_item),page->num_of_records,fp);
+	page->req_count = 0;
+	return 0;
+}
+
+/*
+ * This will purge the page buffer to disk.
  * @return 0 on success, -1 on failure.
  */
 int purge_buffer(){
+	int result = 0;
     // basically loop through the buffer array and write the pages to the filee system
+	for(int i = 0; i < page_buffer->buffer_size; i++){
+		if( write_page( &(page_buffer->pages[i]) ) == -1){
+			result = -1;
+		}
+	}
+	return result;
+}
+
+void free_buffer(){
+	for(int i = 0; i < page_buffer->buffer_size; i++){
+		free( page_buffer->pages[i].page_records );
+	}
+	free( page_buffer->pages );
 }
 
 /*
