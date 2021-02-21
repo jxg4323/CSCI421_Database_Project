@@ -454,8 +454,7 @@ void init_page_buffer(){
 	page_buffer->last_id = -1;
 	page_buffer->pages = (page_info *)malloc(page_buffer->num_of_pages*sizeof(page_info));
 	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		page_buffer->pages[i].page_id = -1;
-		page_buffer->pages[i].num_of_records = (int)floor(db_data->page_size / sizeof(r_item));
+		init_page_layout( -1, (int)floor(db_data->page_size / sizeof(r_item)), &(page_buffer->pages[i]) );
 	}
 }
 

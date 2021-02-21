@@ -94,8 +94,15 @@ void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schem
 void free_table_schemas();
 
 // Page Functions
-void init_page_buffer();
-void manage_page_structs(int count, bool increase_size);
-int add_page_to_buffer();
+void init_page_buffer( );
+void init_page_layout( int pid, int record_num, page_info* page );
+int request_page_in_buffer( int page_id );
+int add_page_to_buffer( int page_id, int loc );
+bool check_buffer_status( );
+int remove_least_used_page( );
+int get_open_spot( );
+int write_page( page_info* page );
+int read_page( int page_id, page_info* page );
+void free_buffer( );
 
 #endif
