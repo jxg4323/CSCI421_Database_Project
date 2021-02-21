@@ -433,11 +433,15 @@ int get_records( int table_id, union record_item *** table ){
 }
 
 int get_page( int page_id, union record_item *** page ){
-	
+	int buf_loc = request_page_in_buffer( page_id );
+	// NOT sure how to return number of records in page without knowing size of record arrays???
+		// DO I care???
+	page = &(page_buffer->pages[buf_loc].page_records);
+	return page_buffer->pages[buf_loc].num_of_records;
 }
 
 int get_record( int table_id, union record_item * key_values, union record_item ** data ){
-
+	
 }
 
 int insert_record( int table_id, union record_item * record ){
@@ -485,7 +489,7 @@ void init_page_buffer(){
  * its req count in the process. If the page is already in
  * the buffer then return the location of it in the array
  * and increment its req_count.
- * If page is already in the array then return its location o.w. -1
+ * Return location of page in the buffer o.w. -1
  */
 int request_page_in_buffer( int page_id ){
 	int loc = -1;
@@ -508,6 +512,7 @@ int request_page_in_buffer( int page_id ){
 			add_page_to_buffer( page_id, free_spot );
 		}
 		page_buffer->pages[free_spot].req_count++;
+		return free_spot;
 	}
 }
 

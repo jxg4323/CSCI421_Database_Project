@@ -30,7 +30,7 @@ int initialize_lookup_table(int num_of_tables, lookup_table* table);
 void init_table_pages(int arr_size, int t_id, table_pages * t_data);
 int read_lookup_file(char* db_loc, lookup_table* l_table);
 int write_lookup_table(lookup_table* lookup_table, char* db_loc);
-int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte);
+int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int row, int col, int r_size);
 int get_table_info(lookup_table* l_table, int table_id);
 table_pages *get_table_struct( lookup_table* l_table, int table_id );
 void free_lookup_table(lookup_table* l_table);
