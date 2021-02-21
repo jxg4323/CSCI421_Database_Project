@@ -161,7 +161,7 @@ void manage_all_schema_array(int count, bool increase_size){
  * key indices array length. Also, allocate the memory required for the arrays.
  */
 void init_table_schema(int t_id, int types_len, int key_len, struct table_data **t_schema, int table_index){
-    t_schema[table_index] = malloc(sizeof(table_data) + (sizeof(int) * (types_len + key_len)));
+    t_schema[table_index] = malloc(sizeof(table_data));
 	t_schema[table_index]->id = t_id;
 	t_schema[table_index]->data_types_size = types_len;
 	t_schema[table_index]->key_indices_size = key_len;
@@ -399,8 +399,7 @@ int drop_table( int table_id ){
     table_data **table_array = malloc(sizeof(table_data *) * (table_count-1));
     for(int i = 0; i < table_count; i++){
         if(table_id != all_table_schemas->tables[i]->id){
-            table_array[i-offset] =
-                malloc(sizeof(struct table_data) + (sizeof(int) * (all_table_schemas->tables[i]->data_types_size + all_table_schemas->tables[i]->key_indices_size)));
+            table_array[i-offset] = malloc(sizeof(table_data));
             table_array[i-offset]->id = all_table_schemas->tables[i]->id;
             table_array[i-offset]->data_types_size = all_table_schemas->tables[i]->data_types_size;
             table_array[i-offset]->key_indices_size = all_table_schemas->tables[i]->key_indices_size;
@@ -556,19 +555,21 @@ int main(int argc, char const *argv[])
         key_indices[1] = 4;
         key_indices[2] = 2;
 	    int result = add_table(data_types, key_indices, data_types_size, key_indices_size);
+        printf("Created a table with id: %d\n", result);
+        result = add_table(data_types, key_indices, data_types_size, key_indices_size);
 	    printf("Created a table with id: %d\n", result);
         print_lookup_table( table_l );
         pretty_print_table_schemas(all_table_schemas);
         printf("----------DROP TABLE----------\n");
-        //drop_table(0);
+        drop_table(0);
         pretty_print_table_schemas(all_table_schemas);
         print_lookup_table( table_l );
         printf("----------CLEAR TABLE----------\n");
-        //clear_table(1);
+        clear_table(1);
         pretty_print_table_schemas(all_table_schemas);
         print_lookup_table( table_l );
-        // free(data_types);
-        // free(key_indices);
+        free(data_types);
+        free(key_indices);
 		terminate_database();
 	}
 	return 0;
