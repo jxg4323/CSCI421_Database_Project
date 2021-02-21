@@ -6,6 +6,10 @@ Professor: Scott Johnson
 #include "lookupmanager.h"
 #include "storage.h"
 
+
+		// TODO: CHANGE lookup table layout to [table_id, bin_size, [{pageid: row, col, size}]] --> TEST IT
+
+
 /*
  * Pretty print lookup table
  */
@@ -23,12 +27,13 @@ void print_table_bin(table_pages *table_data){
 	printf("Table id: %d, bin size: %d, page info: {",table_data->table_id,table_data->bin_size);
 	for(int i = 0; i < table_data->bin_size; i++){
 		int page_id = (table_data->byte_info)[i][0];
-		int s_byte = (table_data->byte_info)[i][1];
-		int e_byte = (table_data->byte_info)[i][2];
+		int row = (table_data->byte_info)[i][1];
+		int col = (table_data->byte_info)[i][2];
+		int size = (table_data->byte_info)[i][3];
 		if( i == (table_data->bin_size-1) ){
-			printf("[%d: %d, %d] ", page_id, s_byte, e_byte);
+			printf("[%d: %d, %d, %d] ", page_id, row, col, size);
 		}else{
-			printf("[%d: %d, %d], ", page_id, s_byte, e_byte);
+			printf("[%d: %d, %d, %d], ", page_id, row, col, size);
 		}
 	}
 	printf("}\n");
@@ -101,8 +106,9 @@ int read_lookup_file(char* db_loc, lookup_table* table){
 		/// Loop through each individual integer and store them into byte_info
 		for( int i = 0; i < b_size; i++ ){
 			fread(&(((table->table_data)[table_indx].byte_info)[i][0]),sizeof(int),1,pFile);  // page id
-			fread(&(((table->table_data)[table_indx].byte_info)[i][1]),sizeof(int),1,pFile);  // start byte
-			fread(&(((table->table_data)[table_indx].byte_info)[i][2]),sizeof(int),1,pFile);  // end byte
+			fread(&(((table->table_data)[table_indx].byte_info)[i][1]),sizeof(int),1,pFile);  // row_offset
+			fread(&(((table->table_data)[table_indx].byte_info)[i][2]),sizeof(int),1,pFile);  // col_offset
+			fread(&(((table->table_data)[table_indx].byte_info)[i][3]),sizeof(int),1,pFile);  // record_size
 		}
 		// add this struct pointer to the list of struct pointers (list of table information)
 		// next line
@@ -143,6 +149,7 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][0]),sizeof(int),1,wFile);
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][1]),sizeof(int),1,wFile);
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][2]),sizeof(int),1,wFile);
+			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][3]),sizeof(int),1,wFile);
 		}
 	}
 	free( lookup_file );
@@ -155,15 +162,16 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
  * section to the bin.
  * Return 0 with success and -1 with failure.
  */
-int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte){
+int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int row, int col, int r_size){
 	// update lookup table
 	int table_info_loc = get_table_info(l_table, table_id);
 	(l_table->table_data[table_info_loc]).byte_info = (int **)realloc((l_table->table_data[table_info_loc]).byte_info, ((l_table->table_data[table_info_loc]).bin_size+1)*sizeof(int*));
 	int* tmp = calloc(LOOKUP_TUPLE_SIZE, sizeof(int));
 	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size] = tmp;
 	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][0] = page_id;
-	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][1] = s_byte;
-	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][2] = e_byte;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][1] = row;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][2] = col;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][3] = r_size;
 	(l_table->table_data[table_info_loc]).bin_size++;
 	return 0;
 }
@@ -230,6 +238,7 @@ lookup_table* delete_table_info(lookup_table *l_table, int table_id){
 					temp->table_data[j].byte_info[s][0] = l_table->table_data[i].byte_info[s][0];
 					temp->table_data[j].byte_info[s][1] = l_table->table_data[i].byte_info[s][1];
 					temp->table_data[j].byte_info[s][2] = l_table->table_data[i].byte_info[s][2];
+					temp->table_data[j].byte_info[s][3] = l_table->table_data[i].byte_info[s][3];
 				}
 				j++;
 			}

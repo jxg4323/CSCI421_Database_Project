@@ -33,7 +33,7 @@ typedef struct page_layout{
 	int page_id;
 	int num_of_records; // floor(page_size/record_size)
 	int req_count;
-	r_item * page_records;
+	r_item ** page_records;
 } page_info;
 
 typedef struct buffer_manager{

@@ -433,7 +433,7 @@ int get_records( int table_id, union record_item *** table ){
 }
 
 int get_page( int page_id, union record_item *** page ){
-
+	
 }
 
 int get_record( int table_id, union record_item * key_values, union record_item ** data ){
@@ -461,7 +461,7 @@ int remove_record( int table_id, union record_item * key_values ){
 void init_page_layout( int pid, int record_num, page_info* page ){
 	page->page_id = pid;
 	page->num_of_records = record_num;
-	page->page_records = (r_item *)malloc(record_num*sizeof(r_item));
+	page->page_records = (r_item **)malloc(db_data->page_size*sizeof(r_item));
 }
 /*
  * Initialize global page buffer pointer and allocate the number
@@ -556,7 +556,7 @@ int remove_least_used_page( ){
 		// reset the page_buffer location to base values a.k.a its available now
 		page_buffer->pages[least_loc].page_id = -1;
 		page_buffer->pages[least_loc].req_count = -1;
-		memset(page_buffer->pages[least_loc].page_records, 0, page_buffer->pages[least_loc].num_of_records*sizeof(r_item));
+		memset(page_buffer->pages[least_loc].page_records, 0, db_data->page_size*sizeof(r_item));
 	}
 
 	return least_loc;
@@ -594,10 +594,8 @@ int write_page( page_info* page ){
 		fprintf(stderr, "ERROR: write_page, invalid page file %s\n", page_file);
 		return -1;
 	}
-	fwrite(&(page->page_id),sizeof(int),1,fp);
-	fwrite(&(page->num_of_records),sizeof(int),1,fp);
 	// DON'T write req_count only use when page is in buffer.
-	fwrite(page->page_records,sizeof(r_item),page->num_of_records,fp);
+	fwrite(page->page_records,sizeof(r_item),db_data->page_size,fp);
 
 	free( page_file );
 	fclose( fp );
@@ -613,6 +611,7 @@ int write_page( page_info* page ){
  */
 int read_page( int page_id, page_info* page ){
 	FILE* fp;
+	long fsize;
 	int file_len = strlen(db_data->db_location) + PAGE_FILE_LEN + MAX_PAGES_FILE_CHARS;
 	char *page_file = (char *)malloc(file_len*sizeof(char));
 	memset(page_file, 0, file_len*sizeof(char));
@@ -625,9 +624,10 @@ int read_page( int page_id, page_info* page ){
 		fprintf(stderr, "ERROR: read_page, invalid page file %s\n", page_file);
 		return -1;
 	}
-	fread(&(page->page_id),sizeof(int),1,fp);
-	fread(&(page->num_of_records),sizeof(int),1,fp);
-	fread(page->page_records,sizeof(r_item),page->num_of_records,fp);
+	// read page file into 2d array
+	page->page_id = page_id;
+	page->num_of_records = (int)floor(db_data->page_size / sizeof(r_item));
+	fread(page->page_records,sizeof(r_item),db_data->page_size,fp);
 	page->req_count = 0;
 	return 0;
 }

@@ -8,7 +8,7 @@ Professor: Scott Johnson
 // Lookup table 
 #include <stdbool.h>
 #define LOOKUP_FILE_NAME_LEN 11
-#define LOOKUP_TUPLE_SIZE 3
+#define LOOKUP_TUPLE_SIZE 4
 #define LOOKUP_TABLE_FILE "lookup_file"
 #define MIN_TABLE_COUNT 2
 #define MIN_BIN_SIZE 1
@@ -16,7 +16,7 @@ Professor: Scott Johnson
 typedef struct table_page_locs{
 	int table_id;
 	int bin_size;
-	// <page_id>,<start_byte>,<end_byte>
+	// <page_id>,<row_offset>,<col_offset>,<record_size>
 	int ** byte_info;  // bin that stores the page ids as well as the blocks in the page where data for the table is stored
 } table_pages;
 
