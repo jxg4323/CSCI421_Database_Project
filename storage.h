@@ -12,6 +12,7 @@ Professor: Scott Johnson
 #include <stdlib.h>
 #include <unistd.h>     /* read library call comes from here */
 #include <string.h>
+#include <math.h>
 
 #define BASE_TABLE_PAGES_SIZE 20
 #define MIN_ALLOC 50
@@ -19,16 +20,32 @@ Professor: Scott Johnson
 #define DATABASE_FILE_NAME_LEN 15
 #define TABLE_METADATA_FILE "table_metadata"
 #define TABLE_METADATA_FILE_LEN 14
+#define PAGE_FILENAME_BEGIN "page" // all pages will start with 
+#define PAGE_FILE_LEN 4
 
 typedef union record_item r_item;
+
+// Page Buffer Information 
+
+typedef struct page_layout{
+	int page_id;
+	int num_of_records; // floor(page_size/record_size)
+	int req_count;
+	r_item * page_records;
+} page_info;
+
+typedef struct buffer_manager{
+	int last_id;
+	int num_of_pages;
+	page_info *pages;
+} buffer_manager;
 
 // Database Config Information
 
 typedef struct db_config{
-	int page_size;  // Page size should be a variable stored
-	int buffer_size;
+	int page_size;  // Number of bytes in page
+	int buffer_size; // number of pages to read
 	char * db_location;
-	char * page_buffer;
 } db_config;
 
 // Table Structure Information
@@ -47,31 +64,18 @@ typedef struct table_schema_array{
     table_data *tables;
 } table_schema_array;
 
-// Page Buffer Information 
-
-typedef struct page_layout{
-	int page_id;
-	int num_of_records;
-	r_item * page_records;
-} page_info;
-
-typedef struct buffer_manager{
-	int last_id;
-	int num_of_pages;
-	page_info *pages;
-} buffer_manager;
-
 // Globals
 
 table_schema_array *all_table_schemas;
 db_config *db_data;
 lookup_table *table_l;
+buffer_manager * page_buffer; 
 
 
 // Database Config Functions
 
 int get_db_config( char * db_loc, db_config* config );
-int update_db_config( char * db_loc, char * buffer );
+int write_db_config( char * db_loc );
 void pretty_print_db_config( db_config *config);
 int allocate_db_data(int page_size, int buf_size, char *db_loc);
 void free_config( db_config *config );
@@ -87,5 +91,9 @@ void pretty_print_table_schemas( table_schema_array *schemas );
 void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schema);
 void free_table_schemas();
 
+// Page Functions
+void init_page_buffer();
+void manage_page_structs(int count, bool increase_size);
+int add_page_to_buffer();
 
 #endif

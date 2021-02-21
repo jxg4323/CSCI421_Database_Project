@@ -7,13 +7,6 @@ Professor: Scott Johnson
 #include "storage.h"
 
 /*
- * Pretty print the database config file into text. 
- */
-void pretty_print_db_config( db_config *config){
-	printf("Page Size: %d, Buffer Size: %d, Database Path: %s\n Buffer: %s\n", config->page_size, config->buffer_size, config->db_location, config->page_buffer);
-}
-
-/*
  * Pretty print lookup table
  */
 void print_lookup_table(lookup_table *table){

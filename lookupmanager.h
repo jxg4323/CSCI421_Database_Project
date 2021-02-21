@@ -6,7 +6,7 @@ Professor: Scott Johnson
 #ifndef LOOKUPMANAGER_H
 #define LOOKUPMANAGER_H
 // Lookup table 
-
+#include <stdbool.h>
 #define LOOKUP_FILE_NAME_LEN 11
 #define LOOKUP_TUPLE_SIZE 3
 #define LOOKUP_TABLE_FILE "lookup_file"

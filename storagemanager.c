@@ -24,6 +24,7 @@ Professor: Scott Johnson
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
 	allocate_db_data(page_size, buffer_size, db_loc);
 	table_l = (lookup_table *)malloc(sizeof(lookup_table));
+	init_page_buffer();
 	allocate_all_schemas();
 	if(restart){
 		return restart_database(db_loc);
@@ -81,21 +82,14 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
     	free( db_data );
     	return -1;
     }
-    char * empty_buffer = (char *)malloc(buffer_size*sizeof(char));
     fwrite(&(page_size), sizeof(int), 1, dbFile);
     fwrite(&(buffer_size), sizeof(int), 1, dbFile);
     fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
-    fwrite(empty_buffer, sizeof(char), buffer_size, dbFile);
-    // initialize base values for lookup table --> ERROR: issue with allocating memory could be here
     initialize_lookup_table( -1, table_l );
-    // for(int t_id = 0; t_id < MIN_TABLE_COUNT; t_id++){
-    // 	init_table_pages(MIN_BIN_SIZE, t_id, &(table_l->table_data[t_id]));
-    // }
     db_data->page_size = page_size;
     db_data->buffer_size = buffer_size;
     strcpy(db_data->db_location, db_loc);
 
-    free(empty_buffer);
     free(config_file);
 	fclose(dbFile);
 	return 0;
@@ -107,7 +101,7 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
 int terminate_database(){
 	// confirm database config file has been writen
 	// write buffer to file
-	update_db_config( db_data->db_location, db_data->page_buffer );
+	write_db_config( db_data->db_location );
 	// get lookup table & confirm written
 	write_lookup_table( table_l, db_data->db_location );
 	// Write tablemetadata file
@@ -127,10 +121,82 @@ int allocate_db_data(int page_size, int buf_size, char *db_loc){
 	db_data->page_size = page_size;
     db_data->buffer_size = buf_size;
     db_data->db_location = (char *)malloc(db_loc_len*sizeof(char));
-	db_data->page_buffer = (char *)malloc(buf_size*sizeof(char));
 	memset(db_data->db_location, 0, db_loc_len*sizeof(char));
-	memset(db_data->page_buffer, 0, buf_size*sizeof(char));
 }
+
+/* 
+ * Allocate memory for the config structure before calling.
+ * Get database config info and page buffer and place into volatile memory.
+ */
+int get_db_config( char * db_loc, db_config* config ){
+	FILE *dbFile;
+	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+
+	memset(config_file, 0, db_loc_len*sizeof(char));
+	strcat(config_file, db_loc);
+	strcat(config_file, DATABASE_CONFIG_FILE);
+
+	dbFile = fopen(config_file, "rb"); 
+	if(dbFile == NULL){
+    	fprintf(stderr,"ERROR: get_db_config invalid database config file %s\n",db_loc);
+    	return -1;
+    }
+    fread(&(config->page_size),sizeof(int),1,dbFile);
+    fread(&(config->buffer_size),sizeof(int),1,dbFile);
+    //allocate memory for buffer and file location
+    config->db_location = (char *)malloc(db_loc_len*sizeof(char));
+    fread(config->db_location, sizeof(char), db_loc_len, dbFile);
+
+    free( config_file );
+    fclose(dbFile);
+    return 0;
+}
+
+/*
+ * Update the buffer in database config.
+ * Return 0 with success and -1 for failure.
+ */
+int write_db_config( char * db_loc ){
+	// buffer size should NEVER change
+	FILE *dbFile;
+	int result;
+	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
+
+	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
+	memset(config_file, 0, db_loc_len*sizeof(char));
+	strcat(config_file, db_loc);
+	strcat(config_file, DATABASE_CONFIG_FILE);
+
+	dbFile = fopen(config_file, "wb"); 
+	if(dbFile == NULL){
+    	fprintf(stderr,"ERROR: write_db_config invalid database config file %s\n",db_loc);
+    	return -1;
+    }
+    fwrite(&(db_data->page_size), sizeof(int), 1, dbFile);
+    fwrite(&(db_data->buffer_size), sizeof(int), 1, dbFile);
+    fwrite(db_data->db_location, sizeof(char), db_loc_len, dbFile);
+
+    free( config_file );
+	fclose(dbFile);
+	return 0;
+}
+
+/*
+ * Free database config volatile memory.
+ */
+void free_config( db_config *config ){
+	free(config->db_location);
+	free(config);
+}
+
+/*
+ * Pretty print the database config file into text. 
+ */
+void pretty_print_db_config( db_config *config ){
+	printf("Page Size: %d, Buffer Size: %d, Database Path: %s\n", config->page_size, config->buffer_size, config->db_location);
+}
+
 
 /*
  * Allocate memory for local table_schema_array WITHOUT allocating
@@ -164,89 +230,6 @@ void init_table_schema(int t_id, int types_len, int key_len, table_data *t_schem
 	t_schema->data_types = (int *)malloc(types_len*sizeof(int));
 	t_schema->key_indices = (int *)malloc(key_len*sizeof(int));
 }
-
-/* 
- * Allocate memory for the config structure before calling.
- * Get database config info and page buffer and place into volatile memory.
- */
-int get_db_config( char * db_loc, db_config* config ){
-	FILE *dbFile;
-	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
-	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
-
-	memset(config_file, 0, db_loc_len*sizeof(char));
-	strcat(config_file, db_loc);
-	strcat(config_file, DATABASE_CONFIG_FILE);
-
-	dbFile = fopen(config_file, "rb"); 
-	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: get_db_config invalid database config file %s\n",db_loc);
-    	return -1;
-    }
-    fread(&(config->page_size),sizeof(int),1,dbFile);
-    fread(&(config->buffer_size),sizeof(int),1,dbFile);
-    //allocate memory for buffer and file location
-    config->db_location = (char *)malloc(db_loc_len*sizeof(char));
-    config->page_buffer = (char *)malloc((config->buffer_size)*sizeof(char)); 
-    fread(config->db_location, sizeof(char), db_loc_len, dbFile);
-    fread(config->page_buffer, sizeof(char), config->buffer_size, dbFile);
-
-    free( config_file );
-    fclose(dbFile);
-    return 0;
-}
-
-/*
- * Update the buffer in database config.
- * Return 0 with success and -1 for failure.
- */
-int update_db_config( char * db_loc, char * buffer ){
-	// buffer size should NEVER change
-	FILE *dbFile;
-	int result;
-	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
-	int buf_size = strlen(buffer);
-	
-	strcpy(db_data->page_buffer, buffer);
-
-
-	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
-	memset(config_file, 0, db_loc_len*sizeof(char));
-	strcat(config_file, db_loc);
-	strcat(config_file, DATABASE_CONFIG_FILE);
-
-	dbFile = fopen(config_file, "wb"); 
-	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: update_db_config invalid database config file %s\n",db_loc);
-    	return -1;
-    }
-    fwrite(&(db_data->page_size), sizeof(int), 1, dbFile);
-    fwrite(&(db_data->buffer_size), sizeof(int), 1, dbFile);
-    fwrite(db_data->db_location, sizeof(char), db_loc_len, dbFile);
-    fwrite(db_data->page_buffer, sizeof(char), db_data->buffer_size, dbFile);
-
-    free( config_file );
-	fclose(dbFile);
-	return 0;
-}
-
-/*
- * Free database config volatile memory.
- */
-void free_config( db_config *config ){
-	free(config->db_location);
-	free(config->page_buffer);  
-	free(config);
-}
-
-/*
- * This will pruge the page buffer to disk.
- * @return 0 on success, -1 on failure.
- */
-int purge_buffer(){
-    // basically loop through the buffer array and write the pages to the filee system
-}
-
 
 void free_table_schemas( table_schema_array* schemas ){
 	for( int i = 0; i < schemas->table_count; i++ ){
@@ -434,7 +417,7 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
    	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
    	all_table_schemas->last_made_id = new_id;
    	all_table_schemas->table_count = end_indx + 1;
-   	add_table_info( table_l, result );
+   	add_table_info( table_l, new_id );
     return new_id;
 }
 
@@ -460,18 +443,81 @@ void init_page_layout( int pid, int record_num, page_info* page ){
 	page->num_of_records = record_num;
 	page->page_records = (r_item *)malloc(record_num*sizeof(r_item));
 }
+/*
+ * Initialize global page buffer pointer and allocate the number
+ * of pages in memory and initialize the pages_id to -1 and record 
+ * count to floor( page_size / sizeof(record_item) ).
+ */
+void init_page_buffer(){
+	page_buffer = (buffer_manager *)malloc(sizeof(buffer_manager));
+	page_buffer->num_of_pages = db_data->buffer_size;
+	page_buffer->last_id = -1;
+	page_buffer->pages = (page_info *)malloc(page_buffer->num_of_pages*sizeof(page_info));
+	for( int i = 0; i < page_buffer->num_of_pages; i++){
+		page_buffer->pages[i].page_id = -1;
+		page_buffer->pages[i].num_of_records = (int)floor(db_data->page_size / sizeof(r_item));
+	}
+}
 
 /*
- * Read the page buffer as a buffer manager struct a.k.a an array of 
- * pages. Assumes the sturct pointer has already been allocated and
- * is empty, but will be freed later.
+ * Read data in a page to the buffer. If there isn't enough 
+ * room in the buffer remove the least requested page from
+ * the buffer.
+ * If page is already in the array then return its location o.w. -1
+ */
+int request_page_in_buffer( int page_id ){
+	
+}
+
+/*
+ * Add the given page to the buffer in the location specified
+ * to the function.
  * Return 0 with success and -1 for failure.
  */
-int read_buffer( buffer_manager* new_buffer ){
-	new_buffer = (buffer_manager *)db_data->page_buffer;
-	// allocate memory for the array of pages
-	new_buffer->pages = (page_info *)malloc(new_buffer->num_of_pages);
-	
+int add_page_to_buffer( int page_id, int loc ){	
+	// read in the records to array
+	// set page_id
+}
+
+/*
+ * Assumes all page id's are positive.
+ * Check if the buffer is full, if not return false and true o.w.
+ */
+bool check_buffer_status( ){
+	bool full = true; // assume buffer is full
+	for( int i = 0; i < page_buffer->num_of_pages; i++){
+		if( page_buffer->pages[i].page_id == -1 ){
+			full = false; // page struct isn't in use
+		}
+	}
+	return full;
+}
+
+/*
+ * Remove the least used page from the buffer. Find the least used page 
+ * and remove it. Set its page_id, record_count, req_count to -1 and 
+ * memset its record array to null.
+ * Return location of removed page, showing its available and -1 o.w.
+ */
+int remove_least_used_page( ){
+	// 
+}
+
+/*
+ * Find first available position in page buffer to write to.
+ * Return location in buffer o.w. -1 for failure.
+ */
+int get_open_spot(){
+	// open spot should always be the end of the buffer 
+		// but at the beginning they are all open !!!!! *****
+}
+
+/*
+ * This will pruge the page buffer to disk.
+ * @return 0 on success, -1 on failure.
+ */
+int purge_buffer(){
+    // basically loop through the buffer array and write the pages to the filee system
 }
 
 /*
@@ -503,9 +549,7 @@ int main(int argc, char const *argv[])
 
 		print_lookup_table( table_l );
 
-		char * new_buf = (char *)malloc(buffer_size*sizeof(char));
-		new_buf = "bleh blah boop beep";
-		update_db_config( db_path, new_buf ); // Good
+		write_db_config( db_path ); // Good
 
 		get_db_config( db_path, db_data );  // Good
 		pretty_print_db_config( db_data );
@@ -546,6 +590,8 @@ int main(int argc, char const *argv[])
 		// clear_table_bin( table_l, 1 );
 		// print_lookup_table( table_l );
 		// printf("----------------------\n");
+		get_db_config( db_path, db_data );  // Good
+		pretty_print_db_config( db_data );
 
 		int * d_tmp = (int *)malloc(10*sizeof(int));
 		int * k_tmp = (int *)malloc(10*sizeof(int));
