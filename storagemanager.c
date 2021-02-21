@@ -122,7 +122,13 @@ int allocate_db_data(int page_size, int buf_size, char *db_loc){
     db_data->buffer_size = buf_size;
     db_data->db_location = (char *)malloc(db_loc_len*sizeof(char));
 	memset(db_data->db_location, 0, db_loc_len*sizeof(char));
-	memset(db_data->page_buffer, 0, buf_size*sizeof(char));
+}
+
+/*
+ * Pretty print the database config file into text.
+ */
+void pretty_print_db_config( db_config *config ){
+    printf("Page Size: %d, Buffer Size: %d, Database Path: %s\n", config->page_size, config->buffer_size, config->db_location);
 }
 
 /*
