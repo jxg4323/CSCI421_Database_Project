@@ -32,11 +32,13 @@ int read_lookup_file(char* db_loc, lookup_table* l_table);
 int write_lookup_table(lookup_table* lookup_table, char* db_loc);
 int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int s_byte, int e_byte);
 int get_table_info(lookup_table* l_table, int table_id);
+table_pages *get_table_struct( lookup_table* l_table, int table_id );
 void free_lookup_table(lookup_table* l_table);
 void free_table_pages(table_pages* t_data);
 void print_lookup_table(lookup_table *table);
 lookup_table* delete_table_info(lookup_table *l_table, int table_id); 
 int add_table_info(lookup_table *l_table, int table_id); 
 int clear_table_bin(lookup_table *l_table, int table_id);
+void manage_table_array(int count, lookup_table *table, bool increase);
 
 #endif

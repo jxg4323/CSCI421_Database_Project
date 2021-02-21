@@ -20,6 +20,8 @@ Professor: Scott Johnson
 #define TABLE_METADATA_FILE "table_metadata"
 #define TABLE_METADATA_FILE_LEN 14
 
+typedef union record_item r_item;
+
 // Database Config Information
 
 typedef struct db_config{
@@ -47,7 +49,17 @@ typedef struct table_schema_array{
 
 // Page Buffer Information 
 
+typedef struct page_layout{
+	int page_id;
+	int num_of_records;
+	r_item * page_records;
+} page_info;
 
+typedef struct buffer_manager{
+	int last_id;
+	int num_of_pages;
+	page_info *pages;
+} buffer_manager;
 
 // Globals
 

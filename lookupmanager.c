@@ -51,6 +51,14 @@ int initialize_lookup_table(int num_of_tables, lookup_table* table){
 	return 0;
 }
 
+void manage_table_array(int count, lookup_table *table, bool increase){
+	if(increase){
+		table->table_data = (table_pages *)realloc(table->table_data, count*sizeof(table_pages));
+	}else{
+		table->table_data = (table_pages *)malloc(count*sizeof(table_pages));
+	}
+}
+
 /*
  * Initialize memory for array of structures which contain location
  * of the pages for each individual table as well as the byte offsets
@@ -186,6 +194,22 @@ int get_table_info(lookup_table* l_table, int table_id){
 }
 
 /*
+ * Return address of the table_pages struct for the given table or Null if not found
+ */
+table_pages *get_table_struct( lookup_table* l_table, int table_id ){
+	bool success = false;
+	for( int i = 0; i < l_table->table_count; i++ ){
+		if( (l_table->table_data)[i].table_id == table_id ){
+			success = true;
+			return &(l_table->table_data[i]);
+		}
+	}
+	if(!success){
+		return NULL;
+	}
+}
+
+/*
  * Delete table information from l_table.
  * Go through the table list and remove and free information, 
  * return pointer with success and NULL with failure.
@@ -230,16 +254,19 @@ lookup_table* delete_table_info(lookup_table *l_table, int table_id){
  * Return 0 with success and -1 for failure.
  */
 int add_table_info(lookup_table *l_table, int table_id){
-	int end = l_table->table_count;
+	int end = (l_table->table_count == -1) ? 0 : l_table->table_count;
+	int count = (l_table->table_count == -1) ? 1 : l_table->table_count++;
 	// if the table already exists in the lookup table return -1
-	if( get_table_info(l_table, table_id ) > 0 ){
+	if( get_table_info( l_table, table_id ) >= 0 ){  
 		return -1;
 	}
 	table_pages *new_table = (table_pages *)malloc(sizeof(table_pages));
 	init_table_pages(MIN_BIN_SIZE, table_id, new_table);
-	l_table->table_data = (table_pages *)realloc(l_table->table_data, (l_table->table_count++) * sizeof(table_pages));
+	bool size_up = (l_table->table_count == -1) ? false : true; 
+	manage_table_array(end+1, l_table, size_up);
 	// add new table to the end of the lookup table
 	l_table->table_data[end] = *new_table;
+	l_table->table_count = count;
 	return 0;
 }
 

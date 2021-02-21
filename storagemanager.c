@@ -52,9 +52,6 @@ int restart_database( char * db_loc ){
 	lookup_result = read_lookup_file(db_loc, table_l);
 	schema_result = get_all_schemas(db_loc);
 	if(db_result == -1 || lookup_result == -1 || schema_result == -1){
-		free( table_l );
-		free_config( db_data );
-		// TODO: create free function for table schema
 		return -1;
 	}else{
 		return 0;
@@ -89,11 +86,11 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
     fwrite(&(buffer_size), sizeof(int), 1, dbFile);
     fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
     fwrite(empty_buffer, sizeof(char), buffer_size, dbFile);
-    // initialize base values for lookup table
-    initialize_lookup_table(MIN_TABLE_COUNT, table_l);
-    for(int t_id = 0; t_id < MIN_TABLE_COUNT; t_id++){
-    	init_table_pages(MIN_BIN_SIZE, t_id, &(table_l->table_data[t_id]));
-    }
+    // initialize base values for lookup table --> ERROR: issue with allocating memory could be here
+    initialize_lookup_table( -1, table_l );
+    // for(int t_id = 0; t_id < MIN_TABLE_COUNT; t_id++){
+    // 	init_table_pages(MIN_BIN_SIZE, t_id, &(table_l->table_data[t_id]));
+    // }
     db_data->page_size = page_size;
     db_data->buffer_size = buffer_size;
     strcpy(db_data->db_location, db_loc);
@@ -431,13 +428,50 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
 	int end_indx = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->table_count;
    	int new_id = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->last_made_id+1;
    	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
-   	manage_all_schema_array( (all_table_schemas->table_count+1),true );
+   	manage_all_schema_array( (end_indx+1),true );
    	init_table_schema( new_id, data_types_size, key_indices_size, &(all_table_schemas->tables[end_indx]) );
    	memcpy( all_table_schemas->tables[end_indx].data_types, data_types, data_types_size*sizeof(int) );
    	memcpy( all_table_schemas->tables[end_indx].key_indices, key_indices, key_indices_size*sizeof(int) );
    	all_table_schemas->last_made_id = new_id;
    	all_table_schemas->table_count = end_indx + 1;
+   	add_table_info( table_l, result );
     return new_id;
+}
+
+/*
+ * record item = pointer to the 2d array of records.
+ */
+int get_records( int table_id, union record_item *** table ){
+	table_pages * t_page_info = (table_pages *)malloc(sizeof(table_pages));
+	t_page_info = get_table_struct( table_l, table_id );
+	// read page into buffer
+	// seek the records for the table
+	// add them to the record_item array
+}
+
+/*
+ * Initialize array of records for the page, due to the fact theat
+ * the page isn't aware of the table structure. The page doesn't 
+ * know how many record_items are in a record. The buffer only cares 
+ * about what records are there.
+ */
+void init_page_layout( int pid, int record_num, page_info* page ){
+	page->page_id = pid;
+	page->num_of_records = record_num;
+	page->page_records = (r_item *)malloc(record_num*sizeof(r_item));
+}
+
+/*
+ * Read the page buffer as a buffer manager struct a.k.a an array of 
+ * pages. Assumes the sturct pointer has already been allocated and
+ * is empty, but will be freed later.
+ * Return 0 with success and -1 for failure.
+ */
+int read_buffer( buffer_manager* new_buffer ){
+	new_buffer = (buffer_manager *)db_data->page_buffer;
+	// allocate memory for the array of pages
+	new_buffer->pages = (page_info *)malloc(new_buffer->num_of_pages);
+	
 }
 
 /*
@@ -450,7 +484,7 @@ int main(int argc, char const *argv[])
 	char db_path[] = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
 	int page_size = 25;
 	int buffer_size = 50;
-	bool restart_flag = true;
+	bool restart_flag = false;
 
 	printf("Database Path %s\n", db_path);
 	printf("%s\n", DATABASE_CONFIG_FILE);
@@ -482,36 +516,36 @@ int main(int argc, char const *argv[])
 
 		terminate_database();
 	}else{
-		for( int i = 0; i < table_count; i++ ){
-			for(int j = 0; j < arr_size; j++ ){
-				((table_l->table_data)[i]).byte_info[j][0] = j+1; 
-				((table_l->table_data)[i]).byte_info[j][1] = j+2; 
-				((table_l->table_data)[i]).byte_info[j][2] = j+3; 
-			}
-		}
-		print_lookup_table( table_l );
-		printf("--------UPDATE TABLE INFO-------\n");
-		update_lookup_table(table_l, 1, 3, 13, 56);
-		print_lookup_table( table_l );
-		printf("--------NEW TABLE INFO-------\n");
-		add_table_info(table_l, 4);
-		update_lookup_table(table_l, 4, 1, 21, 69);
-		print_lookup_table( table_l );
-		printf("---------DELETE TABLE INFO------\n");
-		table_l = delete_table_info(table_l, 4);
-		print_lookup_table( table_l );
-		printf("---------------------\n");
-		printf("--------NEW TABLE INFO-------\n");
-		result = add_table_info(table_l, 1);
-		if( result == -1 ){
-			printf("ERROR: table %d already exists\n", 1);
-		}
-		update_lookup_table(table_l, 1, 1, 15, 76);
-		print_lookup_table( table_l );
-		printf("----------------------\n");
-		clear_table_bin( table_l, 1 );
-		print_lookup_table( table_l );
-		printf("----------------------\n");
+		// for( int i = 0; i < table_count; i++ ){
+		// 	for(int j = 0; j < arr_size; j++ ){
+		// 		((table_l->table_data)[i]).byte_info[j][0] = j+1; 
+		// 		((table_l->table_data)[i]).byte_info[j][1] = j+2; 
+		// 		((table_l->table_data)[i]).byte_info[j][2] = j+3; 
+		// 	}
+		// }
+		// print_lookup_table( table_l );
+		// printf("--------UPDATE TABLE INFO-------\n");
+		// update_lookup_table(table_l, 1, 3, 13, 56);
+		// print_lookup_table( table_l );
+		// printf("--------NEW TABLE INFO-------\n");
+		// add_table_info(table_l, 4);
+		// update_lookup_table(table_l, 4, 1, 21, 69);
+		// print_lookup_table( table_l );
+		// printf("---------DELETE TABLE INFO------\n");
+		// table_l = delete_table_info(table_l, 4);
+		// print_lookup_table( table_l );
+		// printf("---------------------\n");
+		// printf("--------NEW TABLE INFO-------\n");
+		// result = add_table_info(table_l, 1);
+		// if( result == -1 ){
+		// 	printf("ERROR: table %d already exists\n", 1);
+		// }
+		// update_lookup_table(table_l, 1, 1, 15, 76);
+		// print_lookup_table( table_l );
+		// printf("----------------------\n");
+		// clear_table_bin( table_l, 1 );
+		// print_lookup_table( table_l );
+		// printf("----------------------\n");
 
 		int * d_tmp = (int *)malloc(10*sizeof(int));
 		int * k_tmp = (int *)malloc(10*sizeof(int));
@@ -521,6 +555,9 @@ int main(int argc, char const *argv[])
 		}
 		result = add_table( d_tmp, k_tmp, 10, 10 );
 		pretty_print_table_schemas( all_table_schemas );
+
+		update_lookup_table(table_l, 0, 2, 15, 78);
+		print_lookup_table( table_l );
 
 		terminate_database();
 	}
