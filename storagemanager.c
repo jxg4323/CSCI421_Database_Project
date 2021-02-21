@@ -432,6 +432,26 @@ int get_records( int table_id, union record_item *** table ){
 	// add them to the record_item array
 }
 
+int get_page( int page_id, union record_item *** page ){
+
+}
+
+int get_record( int table_id, union record_item * key_values, union record_item ** data ){
+
+}
+
+int insert_record( int table_id, union record_item * record ){
+
+}
+
+int update_record( int table_id, union record_item * record ){
+
+}
+
+int remove_record( int table_id, union record_item * key_values ){
+	
+}
+
 /*
  * Initialize array of records for the page, due to the fact theat
  * the page isn't aware of the table structure. The page doesn't 
@@ -642,8 +662,8 @@ int main(int argc, char const *argv[])
 {
 	// needed to start
 	char db_path[] = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
-	int page_size = 25;
-	int buffer_size = 50;
+	int page_size = 4096;
+	int buffer_size = 10;
 	bool restart_flag = false;
 
 	printf("Database Path %s\n", db_path);
@@ -704,6 +724,9 @@ int main(int argc, char const *argv[])
 		// clear_table_bin( table_l, 1 );
 		// print_lookup_table( table_l );
 		// printf("----------------------\n");
+
+
+
 		get_db_config( db_path, db_data );  // Good
 		pretty_print_db_config( db_data );
 
