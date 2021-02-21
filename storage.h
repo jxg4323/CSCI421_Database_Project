@@ -21,9 +21,7 @@ Professor: Scott Johnson
 #define DATABASE_FILE_NAME_LEN 15
 #define TABLE_METADATA_FILE "table_metadata"
 #define TABLE_METADATA_FILE_LEN 14
-#define PAGE_FILENAME_BEGIN "page" // all pages will start with 
-#define PAGE_FILE_LEN 4
-#define MAX_PAGES_FILE_CHARS 3
+
 
 typedef union record_item r_item;
 
@@ -39,7 +37,7 @@ typedef struct page_layout{
 typedef struct buffer_manager{
 	int last_id;
 	int num_of_pages;
-	page_info *pages;
+	page_info *pages;  //TODO: might have to change to array of struct pointer
 } buffer_manager;
 
 // Database Config Information

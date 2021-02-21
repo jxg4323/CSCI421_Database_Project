@@ -22,7 +22,7 @@ typedef struct table_page_locs{
 
 typedef struct lookup_table{
 	int table_count;  // Number of tables in lookup file
-	table_pages* table_data;  // array of table_pages
+	table_pages* table_data;  // array of table_pages --> TODO: change to array struct pointers??
 } lookup_table;
 
 void print_table_bin(table_pages *table_data);

@@ -5,6 +5,7 @@ Professor: Scott Johnson
 */
 #include "storagemanager.h"
 #include "lookupmanager.h"
+#include "pagedescriptor.h"
 #include "storage.h"
 
 
@@ -422,14 +423,23 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
 }
 
 /*
- * record item = pointer to the 2d array of records.
+ * Loop through all pages where the table information is stored and
+ * copy the record that belongs to the table into the output parameter.
  */
 int get_records( int table_id, union record_item *** table ){
-	table_pages * t_page_info = (table_pages *)malloc(sizeof(table_pages));
-	t_page_info = get_table_struct( table_l, table_id );
-	// read page into buffer
-	// seek the records for the table
-	// add them to the record_item array
+	table_pages * t_page_info = get_table_struct( table_l, table_id );
+	table_data *table_schema = get_table_schema( table_id );
+	// loop through table record locations and compare keys
+	for( int i = 0; i < table_info->bin_size; i++ ){
+		int p_id = table_info->byte_info[i][0];
+		int row = table_info->byte_info[i][1];
+		int col = table_info->byte_info[i][2]; // start offset
+		int r_size = table_info->byte_info[i][3]; // should = data_types_size
+		int p_loc = request_page_in_buffer( p_id );
+		int total = 0;
+		memcpy( table, page_buffer->pages[p_loc].page_records[row], r_size*sizeof(r_item));
+	}
+	return 0;
 }
 
 int get_page( int page_id, union record_item *** page ){
@@ -440,10 +450,39 @@ int get_page( int page_id, union record_item *** page ){
 	return page_buffer->pages[buf_loc].num_of_records;
 }
 
+/*
+ * Loop through records in pages that correspond to the given table
+ * and when the record in the page matches all the key values 
+ * copy the values of the record into the data parameter and return 0.
+ */
 int get_record( int table_id, union record_item * key_values, union record_item ** data ){
-	
+	table_pages *table_info = get_table_struct( table_l, table_id );
+	table_data *table_schema = get_table_schema( table_id );
+	// loop through table record locations and compare keys
+	for( int i = 0; i < table_info->bin_size; i++ ){
+		int p_id = table_info->byte_info[i][0];
+		int row = table_info->byte_info[i][1];
+		int col = table_info->byte_info[i][2]; // start offset
+		int r_size = table_info->byte_info[i][3];
+		int p_loc = request_page_in_buffer( p_id );
+		int total = 0;
+		for( int j = 0; j < table_schema->key_indices_size; j++){
+			int key_loc = table_schema->key_indices[j];
+			if( key_values[j] == page_buffer->pages[p_loc].page_records[row][key_loc+col]){
+				total++;
+			}
+		}
+		if( total == table_schema->key_indices_size-1 ){ // all keys match
+			memcpy(data, page_buffer->pages[p_loc].page_records[row], r_size*sizeof(r_item));
+			return 0;
+		}
+	}
+	return -1;
 }
 
+/*
+ * 
+ */
 int insert_record( int table_id, union record_item * record ){
 
 }
