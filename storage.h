@@ -104,5 +104,6 @@ int get_open_spot( );
 int write_page( page_info* page );
 int read_page( int page_id, page_info* page );
 void free_buffer( );
+void print_page_buffer();
 
 #endif

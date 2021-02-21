@@ -225,15 +225,10 @@ void free_config( db_config *config ){
 	free(config);
 }
 
+
 /*
- * This will pruge the page buffer to disk.
- * @return 0 on success, -1 on failure.
+ * Free the table schema array volatile memory
  */
-int purge_buffer(){
-    // basically loop through the buffer array and write the pages to the filee system
-}
-
-
 void free_table_schemas( table_schema_array* schemas ){
 	for( int i = 0; i < schemas->table_count; i++ ){
 		free( schemas->tables[i]->data_types );
@@ -516,7 +511,7 @@ int remove_record( int table_id, union record_item * key_values ){
 }
 
 /*
- * Initialize array of records for the page, due to the fact theat
+ * Initialize array of records for the page, due to the fact that
  * the page isn't aware of the table structure. The page doesn't
  * know how many record_items are in a record. The buffer only cares
  * about what records are there.
@@ -718,6 +713,13 @@ void free_buffer(){
 	free( page_buffer->pages );
 }
 
+void print_page_buffer(){
+    printf("Page Buffer with Last id '%d' and num of pages '%d'\n", page_buffer->last_id, page_buffer->num_of_pages);
+    for(int i = 0; i < page_buffer->num_of_pages; i++){
+        printf("\tPage %d: [num of records = %d] [req count = %d]\n", page_buffer->pages[i].page_id, page_buffer->pages[i].num_of_records, page_buffer->pages[i].req_count);
+    }
+}
+
 /*
  * Just for testing. 
  * TODO: REMOVE!!
@@ -789,22 +791,8 @@ int main(int argc, char const *argv[])
 		// print_lookup_table( table_l );
 		// printf("----------------------\n");
 
+		print_page_buffer();
 
-
-		get_db_config( db_path, db_data );  // Good
-		pretty_print_db_config( db_data );
-
-		int * d_tmp = (int *)malloc(10*sizeof(int));
-		int * k_tmp = (int *)malloc(10*sizeof(int));
-		for( int i = 0; i < 10; i++){
-			d_tmp[i] = i*5;
-			k_tmp[i] = i *8;
-		}
-		result = add_table( d_tmp, k_tmp, 10, 10 );
-		pretty_print_table_schemas( all_table_schemas );
-
-		update_lookup_table(table_l, 0, 2, 15, 78);
-		print_lookup_table( table_l );
 
 		terminate_database();
 	}
