@@ -55,7 +55,7 @@ int restart_database( char * db_loc ){
 	db_result = get_db_config(db_loc, db_data);  
 	lookup_result = read_lookup_file(db_loc, table_l);
 	schema_result = get_all_schemas(db_loc);
-	pmanage_result = read_page_manager(db_loc, page_descs);
+	pmanage_result = read_page_manager(db_loc, page_lookup);
 	if(db_result == -1 || lookup_result == -1 || schema_result == -1 || pmanage_result == -1){
 		return -1;
 	}else{
@@ -112,7 +112,7 @@ int terminate_database(){
 	// Write tablemetadata file
 	write_all_schemas( db_data->db_location );
 	// Write page manager file
-	write_page_manager( db_data->db_location, page_descs );
+	write_page_manager( db_data->db_location, page_lookup );
 	// free used memory and return
 	free_lookup_table( table_l );
 	free_config( db_data );
@@ -490,20 +490,21 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
 
 void allocate_page_manager(int l_id, int page_count, bool reset){
 	if(reset){
-		page_descs = (page_manager *)malloc(sizeof(page_manager));
-		init_page_manager(page_count, l_id, page_descs);
+		page_lookup = (page_manager *)malloc(sizeof(page_manager));
+		init_page_manager(page_count, l_id, page_lookup);
 	}else{
-		page_descs = (page_manager *)malloc(sizeof(page_manager));
+		page_lookup = (page_manager *)malloc(sizeof(page_manager));
 	}
 }
 
 /*
- * record item = pointer to the 2d array of records.
+ * Function assumes the table 2d array pointer allocated the 
+ * memory to match the number of data types in the table.
  */
 int get_records( int table_id, union record_item *** table ){
 	table_pages * t_page_info = get_table_struct( table_l, table_id );
 	table_data *table_schema = get_table_schema( table_id );
-	int c = 0;
+	int r = 0;
 	// loop through table record locations and compare keys
 	for( int i = 0; i < table_info->bin_size; i++ ){
 		int p_id = table_info->byte_info[i][0];
@@ -512,20 +513,19 @@ int get_records( int table_id, union record_item *** table ){
 		int r_size = table_info->byte_info[i][3]; // should = data_types_size
 		int p_loc = request_page_in_buffer( p_id );
 		int total = 0;
-		memcpy( &(table[c]), &(page_buffer->pages[p_loc].page_records[row][col]), r_size*sizeof(r_item));
-		c++;
+		memcpy( (*table)[r], &(page_buffer->pages[p_loc].page_records[row][col]), r_size*sizeof(r_item));
+		r++;
 	}
 	return table_info->bin_size;
 }
 
 int get_page( int page_id, union record_item *** page ){
 	int buf_loc = request_page_in_buffer( page_id );
-	// NOT sure how to return number of records in page without knowing size of record arrays???
-		// DO I care???
+	page_desc *info = get_page_desc( page_id,page_lookup );
+
 	page = &(page_buffer->pages[buf_loc].page_records);
 
-
-	return page_buffer->pages[buf_loc].num_of_records;
+	return info->num_records;
 }
 
 /*
@@ -551,18 +551,57 @@ int get_record( int table_id, union record_item * key_values, union record_item 
 			}
 		}
 		if( total == table_schema->key_indices_size-1 ){ // all keys match
-			memcpy(data, page_buffer->pages[p_loc].page_records[row], r_size*sizeof(r_item));
+			memcpy( *data, page_buffer->pages[p_loc].page_records[row], r_size*sizeof(r_item) );
 			return 0;
 		}
 	}
 	return -1;
 }
 
-/*
- * 
- */
 int insert_record( int table_id, union record_item * record ){
+	table_pages *table_info = get_table_struct( table_l, table_id );
+	table_data *table_schema = get_table_schema( table_id );
+	int r_size = table_schema->data_types_size;
+	int p_id = 0;
+	// loop through page buffer and check if pages is full
+	for(int i = 0; i<page_buffer->num_of_pages; i++){
+		p_id = page_buffer->pages[i].page_id;
+		page_desc *info = get_page_desc( p_id,page_lookup );
+		int status = is_page_full( info,db_data->page_size );
+		// check if there is enough room in the page for the record
+		if( status >= r_size ){ 
+			// add record to page
+			int r = info->row;
+			int c = info->col;
+			memcpy( &(page_buffer->pages[i].page_records[r][c]), record, r_size*sizeof(r_item));
+			// update page manager
+			
+			return 0;
+		}
+	}
+	// loop through other page_ids
+	while( 1 ){
+		p_id++;
+		if( p_id == page_lookup->last_id ){ // page hasn't been seen before --> create a new page
+			page_info *tmp = (page_info *)malloc(sizeof(page_info));
+			init_page_layout( p_id, 0, tmp );
+			write_page( tmp );
+			add_page( p_id, page_lookup );	
+			free( tmp );
+		}
+		int result = request_page_in_buffer( p_id );
+		page_desc *info = get_page_desc( p_id,page_lookup );
+		int status = is_page_full( info,db_data->page_size );
+		// check if there is enough room in the page for the record
+		if( status >= r_size ){ 
+			// add record to page
+			int r = info->row;
+			int c = info->col;
+			memcpy( &(page_buffer->pages[i].page_records[r][c]), record, r_size*sizeof(r_item));
 
+			return 0;
+		}
+	}
 }
 
 int update_record( int table_id, union record_item * record ){
@@ -595,7 +634,7 @@ void init_page_buffer(){
 	page_buffer->last_id = -1;
 	page_buffer->pages = (page_info *)malloc(page_buffer->num_of_pages*sizeof(page_info));
 	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		init_page_layout( -1, (int)floor(db_data->page_size / sizeof(r_item)), &(page_buffer->pages[i]) );
+		init_page_layout( -1, 0, &(page_buffer->pages[i]) );
 	}
 }
 
@@ -747,9 +786,10 @@ int read_page( int page_id, page_info* page ){
 		return -1;
 	}
 	// read page file into 2d array
-	page->page_id = page_id;
-	page->num_of_records = (int)floor(db_data->page_size / sizeof(r_item));
 	fread(page->page_records,sizeof(r_item),db_data->page_size,fp);
+	page_desc *p_info = get_page_desc( page_id,page_lookup );
+	page->page_id = page_id;
+	page->num_of_records = p_info->num_records;
 	page->req_count = 0;
 	return 0;
 }

@@ -67,7 +67,7 @@ typedef struct table_schema_array{
 // Globals
 
 table_schema_array *all_table_schemas;
-page_manager *page_descs;
+page_manager *page_lookup;
 db_config *db_data;
 lookup_table *table_l;
 buffer_manager * page_buffer; 
