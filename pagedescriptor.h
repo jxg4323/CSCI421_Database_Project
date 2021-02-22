@@ -17,16 +17,20 @@ typedef struct page_description{
 	int page_id;
 	int num_records;
 	int free_loc; // spot in 2d array of record items that is free
+	int *record_sizes; // array of size of records in the page
 } page_desc;
 
 typedef struct page_manager{
 	int last_id;
 	int num_of_pages;  // Number of tables in lookup file
-	page_desc* table_data;  // array of page_desc *
+	page_desc** page_data;  // array of page_desc *
 } page_manager;
 
 void print_page_manager( page_manager * manager );
-int init_page_manager(int num_of_pages, page_manager *manager );
+int init_page_manager(int num_of_pages, int l_id, page_manager *manager );
+void init_page_desc(int pid, int record_count, int f_loc, page_desc *desc );
+void manage_page_descriptors( int n_count, page_manager *manager, bool increase );
+void manage_page_records( int n_count, bool increase, page_desc *data );
 int read_page_manager(char *db_loc, page_manager *manager );
 int write_page_manager(char *db_loc, page_manager *manager );
 int update_page(int page_id, int num_records, int free_loc, page_manager *manager );

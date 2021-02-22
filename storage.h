@@ -67,6 +67,7 @@ typedef struct table_schema_array{
 // Globals
 
 table_schema_array *all_table_schemas;
+page_manager *page_descs;
 db_config *db_data;
 lookup_table *table_l;
 buffer_manager * page_buffer; 
@@ -92,6 +93,7 @@ void init_table_schema(int t_id, int types_len, int key_len, table_data **t_sche
 void free_table_schemas();
 
 // Page Functions
+void allocate_page_manager(int l_id, int page_count, bool reset);
 void init_page_buffer( );
 void init_page_layout( int pid, int record_num, page_info* page );
 int request_page_in_buffer( int page_id );

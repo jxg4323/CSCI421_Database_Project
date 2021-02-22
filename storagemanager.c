@@ -5,6 +5,7 @@ Professor: Scott Johnson
 */
 #include "storagemanager.h"
 #include "lookupmanager.h"
+#include "pagedescriptor.h"
 #include "storage.h"
 
 
@@ -26,6 +27,7 @@ int create_database( char * db_loc, int page_size, int buffer_size, bool restart
 	table_l = (lookup_table *)malloc(sizeof(lookup_table));
 	init_page_buffer();
 	allocate_all_schemas();
+	allocate_page_manager(0, 0, false);
 	if(restart){
 		return restart_database(db_loc);
 	}else{
@@ -49,10 +51,12 @@ int restart_database( char * db_loc ){
 	int db_result = 0;
 	int lookup_result = 0;
 	int schema_result = 0;
+	int pmanage_result = 0;
 	db_result = get_db_config(db_loc, db_data);  
 	lookup_result = read_lookup_file(db_loc, table_l);
 	schema_result = get_all_schemas(db_loc);
-	if(db_result == -1 || lookup_result == -1 || schema_result == -1){
+	pmanage_result = read_page_manager(db_loc, page_descs);
+	if(db_result == -1 || lookup_result == -1 || schema_result == -1 || pmanage_result == -1){
 		return -1;
 	}else{
 		return 0;
@@ -86,6 +90,7 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
     fwrite(&(buffer_size), sizeof(int), 1, dbFile);
     fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
     initialize_lookup_table( -1, table_l );
+    init_page_manager( 0, 0, page_desc );
     db_data->page_size = page_size;
     db_data->buffer_size = buffer_size;
     strcpy(db_data->db_location, db_loc);
@@ -106,6 +111,8 @@ int terminate_database(){
 	write_lookup_table( table_l, db_data->db_location );
 	// Write tablemetadata file
 	write_all_schemas( db_data->db_location );
+	// Write page manager file
+	write_page_manager( db_data->db_location, page_descs );
 	// free used memory and return
 	free_lookup_table( table_l );
 	free_config( db_data );
@@ -481,12 +488,22 @@ int add_table( int * data_types, int * key_indices, int data_types_size, int key
     return new_id;
 }
 
+void allocate_page_manager(int l_id, int page_count, bool reset){
+	if(reset){
+		page_descs = (page_manager *)malloc(sizeof(page_manager));
+		init_page_manager(page_count, l_id, page_descs);
+	}else{
+		page_descs = (page_manager *)malloc(sizeof(page_manager));
+	}
+}
+
 /*
  * record item = pointer to the 2d array of records.
  */
 int get_records( int table_id, union record_item *** table ){
 	table_pages * t_page_info = get_table_struct( table_l, table_id );
 	table_data *table_schema = get_table_schema( table_id );
+	int c = 0;
 	// loop through table record locations and compare keys
 	for( int i = 0; i < table_info->bin_size; i++ ){
 		int p_id = table_info->byte_info[i][0];
@@ -495,9 +512,10 @@ int get_records( int table_id, union record_item *** table ){
 		int r_size = table_info->byte_info[i][3]; // should = data_types_size
 		int p_loc = request_page_in_buffer( p_id );
 		int total = 0;
-		memcpy( table, page_buffer->pages[p_loc].page_records[row], r_size*sizeof(r_item));
+		memcpy( &(table[c]), &(page_buffer->pages[p_loc].page_records[row][col]), r_size*sizeof(r_item));
+		c++;
 	}
-	return 0;
+	return table_info->bin_size;
 }
 
 int get_page( int page_id, union record_item *** page ){
@@ -505,6 +523,8 @@ int get_page( int page_id, union record_item *** page ){
 	// NOT sure how to return number of records in page without knowing size of record arrays???
 		// DO I care???
 	page = &(page_buffer->pages[buf_loc].page_records);
+
+
 	return page_buffer->pages[buf_loc].num_of_records;
 }
 
