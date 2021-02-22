@@ -502,21 +502,21 @@ void allocate_page_manager(int l_id, int page_count, bool reset){
  * memory to match the number of data types in the table.
  */
 int get_records( int table_id, union record_item *** table ){
-	table_pages * t_page_info = get_table_struct( table_l, table_id );
+	table_pages * table_info = get_table_struct( table_l, table_id );
 	table_data *table_schema = get_table_schema( table_id );
-	int r = 0;
+	int total = 0;
 	// loop through table record locations and compare keys
 	for( int i = 0; i < table_info->bin_size; i++ ){
 		int p_id = table_info->byte_info[i][0];
-		int row = table_info->byte_info[i][1];
-		int col = table_info->byte_info[i][2]; // start offset
-		int r_size = table_info->byte_info[i][3]; // should = data_types_size
+		int r_size = table_schema->data_types_size;
 		int p_loc = request_page_in_buffer( p_id );
-		int total = 0;
-		memcpy( (*table)[r], &(page_buffer->pages[p_loc].page_records[row][col]), r_size*sizeof(r_item));
-		r++;
+		page_desc* p_info = get_page_desc( p_id,page_look );
+		for(int j = 0; j < p_info->num_of_records; j++){
+			memcpy( table[total], &(page_buffer->pages[p_loc].page_records[j]), r_size*sizeof(r_item));
+			total++;
+		}
 	}
-	return table_info->bin_size;
+	return total;
 }
 
 int get_page( int page_id, union record_item *** page ){
@@ -539,19 +539,17 @@ int get_record( int table_id, union record_item * key_values, union record_item 
 	// loop through table record locations and compare keys
 	for( int i = 0; i < table_info->bin_size; i++ ){
 		int p_id = table_info->byte_info[i][0];
-		int row = table_info->byte_info[i][1];
-		int col = table_info->byte_info[i][2]; // start offset
-		int r_size = table_info->byte_info[i][3];
+		int r_size = table_schema->data_types_size;
 		int p_loc = request_page_in_buffer( p_id );
 		int total = 0;
 		for( int j = 0; j < table_schema->key_indices_size; j++){
 			int key_loc = table_schema->key_indices[j];
-			if( key_values[j] == page_buffer->pages[p_loc].page_records[row][key_loc+col]){
+			if( key_values[j] == page_buffer->pages[p_loc].page_records[i][key_loc] ){
 				total++;
 			}
 		}
 		if( total == table_schema->key_indices_size-1 ){ // all keys match
-			memcpy( *data, page_buffer->pages[p_loc].page_records[row], r_size*sizeof(r_item) );
+			data = &(page_buffer->pages[p_loc].page_records[i]);
 			return 0;
 		}
 	}
@@ -571,41 +569,59 @@ int insert_record( int table_id, union record_item * record ){
 		// check if there is enough room in the page for the record
 		if( status >= r_size ){ 
 			// add record to page
-			int r = info->row;
-			int c = info->col;
-			memcpy( &(page_buffer->pages[i].page_records[r][c]), record, r_size*sizeof(r_item));
+			int loc = info->free_loc;
+			memcpy( &(page_buffer->pages[i].page_records[loc]), record, r_size*sizeof(r_item));
 			// update page manager
-			
+			update_page( p_id,loc++,r_size,page_lookup );
 			return 0;
 		}
 	}
 	// loop through other page_ids
-	while( 1 ){
+	bool inserted = false;
+	while( !inserted ){
 		p_id++;
 		if( p_id == page_lookup->last_id ){ // page hasn't been seen before --> create a new page
 			page_info *tmp = (page_info *)malloc(sizeof(page_info));
 			init_page_layout( p_id, 0, tmp );
 			write_page( tmp );
 			add_page( p_id, page_lookup );	
+			add_table_info( table_l,table_id );
+			update_lookup_table( table_l,table_id,p_id,r_size );
 			free( tmp );
 		}
-		int result = request_page_in_buffer( p_id );
-		page_desc *info = get_page_desc( p_id,page_lookup );
-		int status = is_page_full( info,db_data->page_size );
-		// check if there is enough room in the page for the record
-		if( status >= r_size ){ 
-			// add record to page
-			int r = info->row;
-			int c = info->col;
-			memcpy( &(page_buffer->pages[i].page_records[r][c]), record, r_size*sizeof(r_item));
-
-			return 0;
+		if( check_page_table( table_info, p_id ) == 0){
+			int result = request_page_in_buffer( p_id );
+			page_desc *info = get_page_desc( p_id,page_lookup );
+			int status = is_page_full( info,db_data->page_size );
+			// check if there is enough room in the page for the record
+			if( status >= r_size ){ 
+				// add record to page
+				int loc = info->free_loc;
+				memcpy( &(page_buffer->pages[i].page_records[loc]), record, r_size*sizeof(r_item));
+				// update page manager
+				update_page( p_id,loc++,r_size,page_lookup );
+				inserted = true;
+				return 0;
+			}
 		}
 	}
+	return -1;
 }
 
 int update_record( int table_id, union record_item * record ){
+	table_pages *table_info = get_table_struct( table_l, table_id );
+	table_data *table_schema = get_table_schema( table_id );
+	int r_size = table_schema->data_types_size;
+	r_item** buf_data = (r_item **)malloc(sizeof(r_item*));
+	if( get_record( table_id,record,buf_data ) == -1 ){
+		return -1;
+	}
+	for( int j = 0; j < table_schema->key_indices_size; j++){
+		int key_loc = table_schema->key_indices[j];
+		//if()
+	}
 
+	free(buf_data);
 }
 
 int remove_record( int table_id, union record_item * key_values ){

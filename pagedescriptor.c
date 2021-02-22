@@ -14,15 +14,7 @@ void print_page_manager( page_manager * manager ){
 	printf("Page Descriptor:\n lastId: %d num_of_pages: %d\n", manager->last_id, manager->num_of_pages);
 	for( int i = 0; i < manager->num_of_pages; i++ ){
 		page_desc *tmp = manager->page_data[i];
-		printf("Page ID: %d, Record Count: %d, Free Location: %d,%d [", tmp->page_id, tmp->num_records, tmp->row, tmp->col);
-		for( int j = 0; j < tmp->num_records; j++){
-			if( j == tmp->num_records-1 ){
-				printf("%d", tmp->record_sizes[j]);
-			}else{
-				printf("%d, ", tmp->record_sizes[j]);
-			}
-		}
-		printf("]\n")
+		printf("Page ID: %d, Record Count: %d, Free Location: %d, Record Size: %d\n", tmp->page_id, tmp->num_records, tmp->free_loc, tmp->record_size);
 	}	
 }
 
@@ -41,12 +33,11 @@ int init_page_manager(int num_of_pages, int l_id, page_manager *manager ){.
  * Initialize page descriptor with provided id and allocate 
  * array of record sizes in page.
  */
-void init_page_desc(int pid, int record_count, int row, int col, page_desc *desc ){
+void init_page_desc(int pid, int record_count, int free_loc, int rec_size, page_desc *desc ){
 	desc->page_id = pid;
 	desc->num_records = record_count;
-	desc->row = row;
-	desc->col = col;
-	manage_page_records( record_count, false, desc );
+	desc->free_loc = free_loc;
+	desc->record_size = rec_size;
 }
 
 void manage_page_descriptors( int n_count, page_manager *manager, bool increase ){
@@ -56,15 +47,6 @@ void manage_page_descriptors( int n_count, page_manager *manager, bool increase 
 		manager->page_data = (page_desc **)malloc(n_count*sizeof(page_desc *));
 	}
 }
-
-void manage_page_records( int n_count, bool increase, page_desc *data ){
-	if( increase ){
-		data->record_sizes = (int *)realloc(data->record_sizes, n_count*sizeof(int));
-	}else{
-		data->record_sizes = (int *)calloc(n_count, sizeof(int));
-	}
-}
-
 /* 
  * If the page manager has already been written to the disk 
  * then read the information to volatile memeory stored in 
@@ -93,14 +75,8 @@ int read_page_manager(char *db_loc, page_manager *manager ){
 	while( 1 ){
 		int id = -1;
 		int num_rec = -1;
-		int row = -1;
-		int col = -1;
-		fread(&(id),sizeof(int),1,fp);
-		fread(&(num_rec),sizeof(int),1,fp);
-		fread(&(row),sizeof(int),1,fp);
-		fread(&(col),sizeof(int),1,fp);
-		init_page_desc(id, num_rec, row, col, manager->page_data[indx]);
-		fread((manager->page_data[indx]->record_sizes),sizeof(int),num_rec,fp);
+		int free_loc = -1;
+		fread(&(manager->page_data[indx]), sizeof(page_desc),1,fp);
 
 		if(feof(fp) || indx == (page_count-1)){ //read until end of file character or there isn't any more page_desc
 			break;
@@ -134,11 +110,7 @@ int write_page_manager(char *db_loc, page_manager *manager ){
 	fwrite(&(manager->last_id), sizeof(int), 1, fp);
 	fwrite(&(manager->num_of_pages), sizeof(int), 1, fp);
 	for( int i = 0; i < manager->num_of_pages; i++){
-		fwrite(&(manager->page_data[i]->page_id), sizeof(int),1,fp);
-		fwrite(&(manager->page_data[i]->num_records), sizeof(int),1,fp);
-		fwrite(&(manager->page_data[i]->row), sizeof(int),1,fp);
-		fwrite(&(manager->page_data[i]->col), sizeof(int),1,fp);
-		fwrite((manager->page_data[i]->record_sizes),sizeof(int),num_rec,fp);
+		fwrite(&(manager->page_data),sizeof(page_desc),1,fp);
 	}
 
 	free( manager_file );
@@ -153,12 +125,10 @@ int write_page_manager(char *db_loc, page_manager *manager ){
  * the new record.
  * Return 0 with success and -1 otherwise.
  */
-int update_page(int page_id, int record_size, int row, int col, page_manager *manager ){
+int update_page(int page_id, int free_loc, int rec_size, page_manager *manager ){
 	page_desc *tmp = get_page_desc(page_id, manager);
-	manage_page_records( tmp->num_records+1, true, tmp );
-	tmp->record_size[num_records] = record_size;
-	tmp->row = row;
-	tmp->col = col;
+	tmp->record_size = rec_size;
+	tmp->free_loc = free_loc;
 	tmp->num_records++;
 }
 
@@ -180,7 +150,6 @@ page_desc* get_page_desc( int page_id, page_manager *manager ){
  */
 void free_page_manager( page_manager *manager ){
 	for(int i = 0; i<manager->num_of_pages; i++){
-		free( (manager->page_data[i])->record_sizes );
 		free( (manager->page_data[i]) );
 	}
 	free( manager->page_data );
@@ -199,9 +168,8 @@ page_manager* delete_page(int page_id, page_manager *manager ){
 		if( (manager->page_data[i])->page_id != page_id ){
 			(new_manager->page_data[j])->page_id = (manager->page_data[i])->page_id;
 			(new_manager->page_data[j])->num_records = (manager->page_data[i])->num_records;
-			(new_manager->page_data[j])->row = (manager->page_data[i])->row;
-			(new_manager->page_data[j])->col = (manager->page_data[i])->col;
-			memcpy((new_manager->page_data[j])->record_sizes, (manager->page_data[i])->record_sizes, (manager->page_data[i])->num_records*sizeof(int));
+			(new_manager->page_data[j])->free_loc = (manager->page_data[i])->free_loc;
+			(new_manager->page_data[j])->record_size = (manager->page_data[i])->record_size;
 			j++;
 		}
 	}
@@ -234,9 +202,7 @@ int is_page_full( page_desc* desc,int page_size ){
 	int total = 0;
 	int left = page_size;
 	int record_size = sizeof(r_item);
-	for(int i = 0; i < desc->num_records; i++){
-		total += desc->record_sizes[i] * record_size;
-	}
+	total += desc->num_records * record_size;
 	left -= total;
 	total = (int)floor( left / record_size );
 	return total;
