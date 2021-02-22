@@ -529,6 +529,31 @@ int get_page( int page_id, union record_item *** page ){
 }
 
 /*
+ * Compare the given records based on the data type of the record.
+ * Return true if records are equal and false otherwise.
+ */
+bool compare_records( int data_type, r_item left, r_item right ){
+	switch(data_type){
+		case 0: // int
+			return (left.i == right.i) ? true : false; 
+			break;
+		case 1: // double
+			return (left.d == right.d) ? true : false; 
+			break;
+		case 2: // bool
+			return (left.b == right.b) ? true : false; 
+			break;
+		case 3: // char
+			return (left.c == right.c) ? true : false; 
+			break;
+		case 4: // varchar
+			return (left.v == right.v) ? true : false; 
+			break;
+	}
+}
+
+
+/*
  * Loop through records in pages that correspond to the given table
  * and when the record in the page matches all the key values 
  * copy the values of the record into the data parameter and return 0.
@@ -544,7 +569,7 @@ int get_record( int table_id, union record_item * key_values, union record_item 
 		int total = 0;
 		for( int j = 0; j < table_schema->key_indices_size; j++){
 			int key_loc = table_schema->key_indices[j];
-			if( key_values[j] == page_buffer->pages[p_loc].page_records[i][key_loc] ){
+			if( compare_records( table_schema->data_types[key_loc], key_values[j], page_buffer->pages[p_loc].page_records[i][key_loc] ) ){
 				total++;
 			}
 		}

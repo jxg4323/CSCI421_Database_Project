@@ -7,8 +7,6 @@ Professor: Scott Johnson
 #include "storage.h"
 
 
-		// TODO: CHANGE lookup table layout to [table_id, bin_size, [{pageid: row, col, size}]] --> TEST IT
-
 
 /*
  * Pretty print lookup table
@@ -282,7 +280,7 @@ int clear_table_bin(lookup_table *l_table, int table_id){
  * Return 0 if the page belongs to the table and -1 otherwise.
  */
 int check_page_table(table_pages *t_data, int page_id ){
-	for(int i = 0; i<bin_size;i++){
+	for(int i = 0; i<t_data->bin_size;i++){
 		if( t_data->byte_info[i][0] == page_id ){
 			return 0;
 		}

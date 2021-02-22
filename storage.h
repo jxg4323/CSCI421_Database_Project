@@ -14,6 +14,8 @@ Professor: Scott Johnson
 #include <string.h>
 #include <limits.h>
 #include <math.h>
+#include "lookupmanager.h"
+#include "pagedescriptor.h"
 
 #define BASE_TABLE_PAGES_SIZE 20
 #define MIN_ALLOC 50

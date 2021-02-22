@@ -23,7 +23,7 @@ void print_page_manager( page_manager * manager ){
  * as page_description which will hold information
  * on the page records.
  */
-int init_page_manager(int num_of_pages, int l_id, page_manager *manager ){.
+int init_page_manager(int num_of_pages, int l_id, page_manager *manager ){
 	manager->last_id = l_id;
 	manager->num_of_pages = num_of_pages;
 	manager->page_data = (page_desc **)malloc(num_of_pages*sizeof(page_desc *));
@@ -33,9 +33,9 @@ int init_page_manager(int num_of_pages, int l_id, page_manager *manager ){.
  * Initialize page descriptor with provided id and allocate 
  * array of record sizes in page.
  */
-void init_page_desc(int pid, int record_count, int free_loc, int rec_size, page_desc *desc ){
+void init_page_desc(int pid, int num_records, int free_loc, int rec_size, page_desc *desc ){
 	desc->page_id = pid;
-	desc->num_records = record_count;
+	desc->num_records = num_records;
 	desc->free_loc = free_loc;
 	desc->record_size = rec_size;
 }
@@ -182,11 +182,11 @@ page_manager* delete_page(int page_id, page_manager *manager ){
  * Return 0 for success and -1 o.w.
  */
 int add_page( int page_id, page_manager *manager ){
-	if( get_page_desc(page_id) != NULL ){ // if page is already in manager return -1
+	if( get_page_desc(page_id,manager) != NULL ){ // if page is already in manager return -1
 		return -1; 
 	}
 	manage_page_descriptors( manager->num_of_pages+1, manager, true );
-	init_page_desc( page_id, 0, 0, manager->page_data[num_of_pages] )
+	init_page_desc( page_id, 0, 0, 0, manager->page_data[manager->num_of_pages] );
 	manager->num_of_pages++;
 	manager->last_id++;
 	return 0;
@@ -201,7 +201,7 @@ int add_page( int page_id, page_manager *manager ){
 int is_page_full( page_desc* desc,int page_size ){
 	int total = 0;
 	int left = page_size;
-	int record_size = sizeof(r_item);
+	int record_size = 256;
 	total += desc->num_records * record_size;
 	left -= total;
 	total = (int)floor( left / record_size );
