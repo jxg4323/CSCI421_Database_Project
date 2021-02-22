@@ -90,7 +90,7 @@ int new_database( char * db_loc, int page_size, int buffer_size ){
     fwrite(&(buffer_size), sizeof(int), 1, dbFile);
     fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
     initialize_lookup_table( -1, table_l );
-    init_page_manager( 0, 0, page_desc );
+    init_page_manager( 0, 0, page_lookup );
     db_data->page_size = page_size;
     db_data->buffer_size = buffer_size;
     strcpy(db_data->db_location, db_loc);
@@ -510,8 +510,8 @@ int get_records( int table_id, union record_item *** table ){
 		int p_id = table_info->byte_info[i][0];
 		int r_size = table_schema->data_types_size;
 		int p_loc = request_page_in_buffer( p_id );
-		page_desc* p_info = get_page_desc( p_id,page_look );
-		for(int j = 0; j < p_info->num_of_records; j++){
+		page_desc* p_info = get_page_desc( p_id,page_lookup );
+		for(int j = 0; j < p_info->num_records; j++){
 			memcpy( table[total], &(page_buffer->pages[p_loc].page_records[j]), r_size*sizeof(r_item));
 			total++;
 		}
@@ -590,14 +590,14 @@ int insert_record( int table_id, union record_item * record ){
 			free( tmp );
 		}
 		if( check_page_table( table_info, p_id ) == 0){
-			int result = request_page_in_buffer( p_id );
+			int page_loc = request_page_in_buffer( p_id );
 			page_desc *info = get_page_desc( p_id,page_lookup );
 			int status = is_page_full( info,db_data->page_size );
 			// check if there is enough room in the page for the record
 			if( status >= r_size ){ 
 				// add record to page
 				int loc = info->free_loc;
-				memcpy( &(page_buffer->pages[i].page_records[loc]), record, r_size*sizeof(r_item));
+				memcpy( &(page_buffer->pages[page_loc].page_records[loc]), record, r_size*sizeof(r_item));
 				// update page manager
 				update_page( p_id,loc++,r_size,page_lookup );
 				inserted = true;
@@ -930,7 +930,7 @@ int main(int argc, char const *argv[])
 		result = add_table( d_tmp, k_tmp, 10, 10 );
 		pretty_print_table_schemas( all_table_schemas );
 
-		update_lookup_table(table_l, 0, 2, 15, 78);
+		update_lookup_table(table_l, 0, 2, 78);
 		print_lookup_table( table_l );
 
 		terminate_database();
