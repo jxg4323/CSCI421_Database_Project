@@ -616,12 +616,18 @@ int update_record( int table_id, union record_item * record ){
 	if( get_record( table_id,record,buf_data ) == -1 ){
 		return -1;
 	}
-	for( int j = 0; j < table_schema->key_indices_size; j++){
-		int key_loc = table_schema->key_indices[j];
-		//if()
+	int i = 0;
+	int key_loc = 0;
+	for( int j = 0; j < table_schema->data_types_size; j++){
+		if( i < table_schema->key_indices_size ){
+			key_loc = table_schema->key_indices[i];
+		}
+		if( i != key_loc ){
+			*(buf_data[i]) = record[i];
+		}
 	}
-
 	free(buf_data);
+	return 0;
 }
 
 int remove_record( int table_id, union record_item * key_values ){
