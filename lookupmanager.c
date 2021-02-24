@@ -1,13 +1,11 @@
 /*
-Authors: Kelsey Dunn, Alex Frankel, James Green, Varnit Tewari
+Authors: Alex Frankel, James Green, Varnit Tewari
 Assigment: Phase 1
 Professor: Scott Johnson 
 */
 #include "lookupmanager.h"
 #include "storage.h"
 
-
-		// TODO: CHANGE lookup table layout to [table_id, bin_size, [{pageid: row, col, size}]] --> TEST IT
 
 
 /*
@@ -27,13 +25,11 @@ void print_table_bin(table_pages *table_data){
 	printf("Table id: %d, bin size: %d, page info: {",table_data->table_id,table_data->bin_size);
 	for(int i = 0; i < table_data->bin_size; i++){
 		int page_id = (table_data->byte_info)[i][0];
-		int row = (table_data->byte_info)[i][1];
-		int col = (table_data->byte_info)[i][2];
-		int size = (table_data->byte_info)[i][3];
+		int size = (table_data->byte_info)[i][1];
 		if( i == (table_data->bin_size-1) ){
-			printf("[%d: %d, %d, %d] ", page_id, row, col, size);
+			printf("[%d: %d] ", page_id, size);
 		}else{
-			printf("[%d: %d, %d, %d], ", page_id, row, col, size);
+			printf("[%d: %d], ", page_id, size);
 		}
 	}
 	printf("}\n");
@@ -106,9 +102,7 @@ int read_lookup_file(char* db_loc, lookup_table* table){
 		/// Loop through each individual integer and store them into byte_info
 		for( int i = 0; i < b_size; i++ ){
 			fread(&(((table->table_data)[table_indx].byte_info)[i][0]),sizeof(int),1,pFile);  // page id
-			fread(&(((table->table_data)[table_indx].byte_info)[i][1]),sizeof(int),1,pFile);  // row_offset
-			fread(&(((table->table_data)[table_indx].byte_info)[i][2]),sizeof(int),1,pFile);  // col_offset
-			fread(&(((table->table_data)[table_indx].byte_info)[i][3]),sizeof(int),1,pFile);  // record_size
+			fread(&(((table->table_data)[table_indx].byte_info)[i][1]),sizeof(int),1,pFile);  // record_size
 		}
 		// add this struct pointer to the list of struct pointers (list of table information)
 		// next line
@@ -148,8 +142,6 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
 		for( int j = 0; j < b_size; j++ ){
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][0]),sizeof(int),1,wFile);
 			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][1]),sizeof(int),1,wFile);
-			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][2]),sizeof(int),1,wFile);
-			fwrite(&(((lookup_table->table_data)[i]).byte_info[j][3]),sizeof(int),1,wFile);
 		}
 	}
 	free( lookup_file );
@@ -162,16 +154,14 @@ int write_lookup_table(lookup_table* lookup_table, char* db_loc){
  * section to the bin.
  * Return 0 with success and -1 with failure.
  */
-int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int row, int col, int r_size){
+int update_lookup_table(lookup_table* l_table, int table_id, int page_id, int r_size){
 	// update lookup table
 	int table_info_loc = get_table_info(l_table, table_id);
 	(l_table->table_data[table_info_loc]).byte_info = (int **)realloc((l_table->table_data[table_info_loc]).byte_info, ((l_table->table_data[table_info_loc]).bin_size+1)*sizeof(int*));
 	int* tmp = calloc(LOOKUP_TUPLE_SIZE, sizeof(int));
 	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size] = tmp;
 	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][0] = page_id;
-	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][1] = row;
-	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][2] = col;
-	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][3] = r_size;
+	((l_table->table_data[table_info_loc]).byte_info)[(l_table->table_data[table_info_loc]).bin_size][1] = r_size;
 	(l_table->table_data[table_info_loc]).bin_size++;
 	return 0;
 }
@@ -237,8 +227,6 @@ lookup_table* delete_table_info(lookup_table *l_table, int table_id){
 				for(int s = 0; s < l_table->table_data[i].bin_size; s++){
 					temp->table_data[j].byte_info[s][0] = l_table->table_data[i].byte_info[s][0];
 					temp->table_data[j].byte_info[s][1] = l_table->table_data[i].byte_info[s][1];
-					temp->table_data[j].byte_info[s][2] = l_table->table_data[i].byte_info[s][2];
-					temp->table_data[j].byte_info[s][3] = l_table->table_data[i].byte_info[s][3];
 				}
 				j++;
 			}
@@ -286,6 +274,19 @@ int clear_table_bin(lookup_table *l_table, int table_id){
 	}
 	return 0;
 }	
+
+/*
+ * Loop through table bin to check if the page belongs to the table.
+ * Return 0 if the page belongs to the table and -1 otherwise.
+ */
+int check_page_table(table_pages *t_data, int page_id ){
+	for(int i = 0; i<t_data->bin_size;i++){
+		if( t_data->byte_info[i][0] == page_id ){
+			return 0;
+		}
+	}
+	return -1;
+}
 
 /*
  * Free memory used by lookup table
