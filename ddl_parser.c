@@ -44,7 +44,24 @@ int parse_ddl_statement( char * statement ){
   * @return 0 on sucess; -1 on failure
   */
 int parse_create_statement( char * statement ){
+ 
+    char *end_str;
+    char *token = strtok_r(statement, "\n", &end_str);
 
+    while (token != NULL)
+    {
+        char *end_token;
+        printf("a = %s\n", token);
+        char *token2 = strtok_r(token, " ", &end_token);
+        while (token2 != NULL)
+        {
+            printf("b = %s\n", token2);
+            token2 = strtok_r(NULL, " ", &end_token);
+        }
+        token = strtok_r(NULL, "\n", &end_str);
+    }
+
+    return 0;
 }
 
 /*
@@ -74,7 +91,7 @@ int parse_drop_statement( char * statement ){
  * @return 0 on sucess; -1 on failure
  */
 int parse_alter_statement( char * statement ){
-	
+
 }
 
 
