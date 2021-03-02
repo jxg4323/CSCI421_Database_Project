@@ -19,37 +19,46 @@
 
 typedef struct foreign_table_info{
     int num_foreign_attributes;
-    char **info; // ["a_1", "a_2","foreign_tabe_name", "r_1", "r_2"]
+    char *foreign_table_name;
+    int *original_table_attr;
+    int *foreign_table_attr;
 } foreign_data;
+
+typedef struct attribute_info{
+    char *name;
+    int type;
+    bool notnull;
+    bool primarykey;
+    bool unique;
+    bool deleted;
+    int relation_count;
+    foreign_data *foreign_relations;
+} attr_info;
 
 typedef struct table_catalog{
     int id;
     // Sizes of arrays
     int attribute_count;
-    int key_indices_size;
     int num_prim_keys;
-    int num_foreign_keys;
     int table_name_size;
-    int foreign_table_count;
     // table data
     char *table_name;
-    char** attribute_names; // column names
-    // [type, constraintA, constraintB, constraintC, deleted]
-    int (* attr_info)[5]; // constraints array and data types
-    char ** foreign_key_names; // foreignkeys: array of foreign information
+    attr_info *attributes; // constraints array and data types
+    int *primary_keys;
 } table_catalog;
 
 typedef struct table_catalog_array{
-    int last_made_id;
+    int last_id;
     int table_count;
-    table_catalog *catalogs;
+    table_catalog **table_info;
 } catalogs;
 
 // Catalog Functions
 
-catalogs* allocate_catalogs(int table_count);
-void read_catalogs(char *db_loc, catalogs* logs);
-void write_catalogs(char *db_loc, catalogs* logs);
+catalogs* initialize_catalogs();
+void manage_catalogs(catalogs *logs, int table_count, bool increase);
+int read_catalogs(char *db_loc, catalogs* logs);
+int write_catalogs(char *db_loc, catalogs* logs);
 /*
  * Create new table catalog with just table name and newly allocated structure
  * Return location of new catalog in array if success otherwise -1.
@@ -71,11 +80,33 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
 int remove_attribute(table_catalog* t_cat, char *attr_name);
 
 /*
- * Layout of the foreign_row is: ["a_1", "a_2","foreign_tabe_name", "r_1", "r_2"]
+ * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
  * allocate or reallocate memory for the addidtion of the next foreign reference.
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
 int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count);
+
+/*
+ * Search through all catalog information to find the one with
+ * the same table name as provided, given that all table names
+ * are unique.
+ * Return pointer to the table catalog or NULL if there isn't one. 
+ */
+table_catalog* get_catalog(catalogs *logs, char *tname);
+
+/*
+ * Based on the table id retrieve the attribute location
+ * in the table catalog.
+ * Return location of attribute in table if found, o.w. -1.
+ */
+int get_attr_loc(catalogs *logs, int tid, char *attr_name);
+
+/*
+ * Check if the table name is already in use.
+ * Return True if a table name is found, false otherwise.
+ */
+bool check_table_name(catalogs *log, char *tname);
+
 
 #define __TABLESCHEMA_H__
