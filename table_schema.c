@@ -1,12 +1,19 @@
 #include "tableschema.h"
 
+/*
+ *
+ TODO: redo
+ */
 catalogs* intialize_catalogs(){
 	catalogs* logs = (catalogs *)malloc(sizeof(catalogs));
 	logs->last_id = 0;
 	logs->table_count = 0;
 	return logs;
 }
-
+/*
+ *
+ TODO: redo
+ */
 void manage_catalogs(catalogs *logs, int table_count, bool increase){
 	if(increase){
 		logs->all_tables = (table_catalog *)realloc(table_count*sizeof(table_catalog));
@@ -21,17 +28,28 @@ void manage_catalogs(catalogs *logs, int table_count, bool increase){
  * Initialize the table catalog with the provided values and allocate 
  * memory for the array of attributes but don't fill. User is responsible
  * for freeing the table_name pointer after call.
+ TODO: redo
  */
-void init_catalog(table_catalog* catalog, int tid, int attr_count, char *table_name ){
+void init_catalog(table_catalog* catalog, int tid, char *table_name ){
 	catalog->id = tid;
 	catalog->deleted = false;
-	catalog->attribute_count = attr_count;
-	catalog->num_prim_keys = prim_keys_count;
+	catalog->attribute_count = 0;
+	catalog->foreign_size = 0;
+	catalog->primary_size = 0;
+	catalog->unique_size = 0;
 	catalog->table_name = (char *)malloc(strlen(table_name)*sizeof(char));
 	strcpy(catalog->table_name, table_name);
-	catalog->attributes = (attr_info*)malloc(attr_count*sizeof(attr_info));
+	catalog->attributes = (attr_info*)malloc(0*sizeof(attr_info));
+	catalog->foreign_data = (foreign_data*)malloc(0*sizeof(foreign_data));
+	catalog->primary_tuple = (int *)malloc(0*sizeof(int));
+	catalog->unique_tuple = (int *)malloc(0*sizeof(int));
 }
 
+
+/*
+ *
+ TODO: redo
+ */
 void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int rel_count, char *name){
 	attr->deleted = false;
 	attr->type = type;
@@ -47,6 +65,7 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
 /*
  * Increase size of attribute arrary in table catalog and increment
  * attribute count in the table catalog.
+ TODO: redo
  */
 void manage_attributes(table_catalog* t_cat, int attr_count){
 	t_cat->attributes = (table_catalog *)realloc(attr_count*sizeof(attr_info));
@@ -73,6 +92,7 @@ int type_conversion(char* type){
 /*
  * Read the catalog information from the disk into memory and if successful
  * return 1 otherwise -1.
+ TODO: redo
  */
 int read_catalogs(char *db_loc, catalogs* logs){
 	int count = 0;
@@ -187,24 +207,32 @@ int write_catalogs(char *db_loc, catalogs* logs){
 /*
  * Create new table catalog with just table name and newly allocated structure
  * Return location of new catalog in array if success otherwise -1.
+ TODO: redo
  */
 int new_catalog(catalogs *logs, char *table_name){
 	int last = logs->table_count;
 	manage_catalogs( logs, logs->table_count+1, true );
+	//TODO: confirm table name is unique
 	init_catalog( &(logs->all_tables[last]),last,0,table_name );
 	return last;
 }
 
 /*
  * Add attribute information to the given table, and increment the attribute
- * count for the table. 
+ * count for the table.
+ * @param @constraints: layout of array [<notnull>, <primarykey>, <unique>]
  * Return 1 for success and -1 for failure.
+ TODO: redo
  */
 int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]){
 	int last = t_cat->attribute_count;
 	int type_con = type_conversion(type);
+	if ( type_con == -1 ){
+		fprintf( stderr, "ERROR: add_attribute, Type not knonw\n" );
+		return -1;
+	}
 	manage_attributes( t_cat, t_cat->attribute_count+1 );
-	init_attribute( &(t_cat->attributes[last]),  );
+	init_attribute( &(t_cat->attributes[last]), type, constraints[0], constraints[1], constraints[2], 0 );
 	return 1;
 }
 
@@ -212,14 +240,32 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
  * Mark an attribute as deleted in the attribute information matrix. If an 
  * attribute is marked as removed then don't write it to the disk.
  * Return 1 for success and -1 for failure.
+ TODO: redo
  */
-int remove_attribute(table_catalog* t_cat, char *attr_name){}
+int remove_attribute(table_catalog* t_cat, char *attr_name){
+
+}
+
+/*
+ * Find the attribute listed in the parameters in the table
+ * and return the index of the attribute in the array. If
+ * the attribute isn't found the return -1.
+ TODO: redo
+ */
+int find_attr(table_catalog* t_cat, char *attr_name){
+	int count = t_cat->attribute_count;
+	int loc = -1;
+	for( int i = 0; i < count; i++ ){
+		if( strcmp(t_cat->attributes[i].name, attr_name) == 0 ){ loc = i; }
+	}
+}
 
 /*
  * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
  * allocate or reallocate memory for the addidtion of the next foreign reference.
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
+ TODO: redo
  */
 int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count){}
 
@@ -228,6 +274,7 @@ int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count){
  * the same table name as provided, given that all table names
  * are unique.
  * Return pointer to the table catalog or NULL if there isn't one. 
+ TODO: redo
  */
 table_catalog* get_catalog(catalogs *logs, char *tname){}
 
@@ -235,11 +282,13 @@ table_catalog* get_catalog(catalogs *logs, char *tname){}
  * Based on the table id retrieve the attribute location
  * in the table catalog.
  * Return location of attribute in table if found, o.w. -1.
+ TODO: redo
  */
 int get_attr_loc(catalogs *logs, int tid, char *attr_name){}
 
 /*
  * Check if the table name is already in use.
  * Return True if a table name is found, false otherwise.
+ TODO: redo
  */
 bool check_table_name(catalogs *log, char *tname){}
