@@ -14,49 +14,52 @@
 #define EMPTY -1
 #define MAX_NUM_CONSTRAINTS 3
 #define MAX_CONSTRAINT_CHARS 11
+#define INTEGER "integer"
+#define DOUBLE "double"
+#define BOOLEAN "boolean"
+#define CHAR "char"
+#define VARCHAR "varchar"
 
 // Table Structure Information
 
 typedef struct foreign_table_info{
-    int num_foreign_attributes;
-    char *foreign_table_name;
-    int *original_table_attr;
-    int *foreign_table_attr;
+    int foreign_table_id;
+    int foreign_attr_loc; // location of attribute in foreign table attribute array
 } foreign_data;
 
 typedef struct attribute_info{
     char *name;
     int type;
-    bool notnull;
-    bool primarykey;
-    bool unique;
-    bool deleted;
-    int relation_count;
+    bool deleted; // DON'T STORE --> if True then don't write
+    // Constraints stored as 0 or 1  --> if 1 then constrain is in use
+    int notnull; 
+    int primarykey;
+    int unique;
+    // Foreign Relations
+    int relation_count; // number of foreign relations for attribute
     foreign_data *foreign_relations;
 } attr_info;
 
 typedef struct table_catalog{
     int id;
+    bool deleted; // DON'T STORE --> if True then don't write
     // Sizes of arrays
     int attribute_count;
-    int num_prim_keys;
-    int table_name_size;
     // table data
     char *table_name;
     attr_info *attributes; // constraints array and data types
-    int *primary_keys;
 } table_catalog;
 
 typedef struct table_catalog_array{
-    int last_id;
     int table_count;
-    table_catalog **table_info;
+    table_catalog *all_tables;
 } catalogs;
 
 // Catalog Functions
 
 catalogs* initialize_catalogs();
 void manage_catalogs(catalogs *logs, int table_count, bool increase);
+void init_catalog(table_catalog* catalog, int tid, int attr_count, char *table_name );
 int read_catalogs(char *db_loc, catalogs* logs);
 int write_catalogs(char *db_loc, catalogs* logs);
 /*
@@ -86,6 +89,14 @@ int remove_attribute(table_catalog* t_cat, char *attr_name);
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
 int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count);
+
+/*
+ * Loop through the attribute information in the table catalog and
+ * apply the primary key constraint to the attributes whose names
+ * match those in the @param prim_names.
+ * Return 1 with succesful upate and -1 otherwise.
+ */
+int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys);
 
 /*
  * Search through all catalog information to find the one with
