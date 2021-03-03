@@ -21,7 +21,6 @@
 #define VARCHAR "varchar"
 
 // Table Structure Information
-//TODO: Ask profressor for clarification on tuples for unique, primary, foreign -> tuples or 1-1 correlation of attributes
 typedef struct foreign_table_info{
     char *name;
     bool deleted; // DON'T STORE --> if True then don't write
@@ -58,7 +57,7 @@ typedef struct table_catalog{
     // table data
     char *table_name;
     attr_info *attributes; // constraints array and data types
-    foreign_data *relation;
+    foreign_data *relations;
     unique *unique_tuple;
     int *primary_tuple;
 } table_catalog;
@@ -76,7 +75,7 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
 // Manage functions increase sizes of corresponding dynamic arrays
 void manage_catalogs(catalogs *logs, int table_count, bool increase);
 void manage_attributes(table_catalog* t_cat, int attr_count, bool increase);
-void manage_foreign_rels(table_catalog *t_cat, int rel_coutn, bool increase);
+void manage_foreign_rels(table_catalog *t_cat, int rel_count, bool increase);
 void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase);
 void manage_unique_tuple(table_catalog *t_cat, int size, bool increase);
 
