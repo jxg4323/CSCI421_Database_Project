@@ -60,8 +60,13 @@ void manage_attributes(table_catalog* t_cat, int attr_count){
  */
 int type_conversion(char* type){
 	int result = -1;
-
-	if( strcmp(type, INTEGER) == 0){ result = 0;}
+	char *temp = strdup(type);
+	char *token = strtok(temp, "\s+(");
+	if( strcmp(type, INTEGER) == 0){ result = 0; }
+	else if( strcmp(type, DOUBLE) == 0){ result = 1; }
+	else if( strcmp(type, BOOLEAN) == 0){ result = 2; }
+	else if( strcmp(type, CHAR) == 0){ result = 3; }
+	else if( strcmp(type, VARCHAR) == 0){ result = 4; }
 	return result;
 }
 
@@ -197,8 +202,8 @@ int new_catalog(catalogs *logs, char *table_name){
  */
 int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]){
 	int last = t_cat->attribute_count;
+	int type_con = type_conversion(type);
 	manage_attributes( t_cat, t_cat->attribute_count+1 );
-
 	init_attribute( &(t_cat->attributes[last]),  );
 	return 1;
 }
