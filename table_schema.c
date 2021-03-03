@@ -60,8 +60,8 @@ void manage_attributes(table_catalog* t_cat, int attr_count){
  */
 int type_conversion(char* type){
 	int result = -1;
-	
-	if( strcmp(type,))
+
+	if( strcmp(type, INTEGER) == 0){ result = 0;}
 	return result;
 }
 
