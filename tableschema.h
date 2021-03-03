@@ -24,6 +24,7 @@
 //TODO: Ask profressor for clarification on tuples for unique, primary, foreign -> tuples or 1-1 correlation of attributes
 typedef struct foreign_table_info{
     char *name;
+    bool deleted; // DON'T STORE --> if True then don't write
     int foreign_table_id;
     int tuple_size; // size of tuple --> number of attributes involved
     int *orig_attr_locs; // location of attribute in original table attribute array
@@ -66,19 +67,18 @@ typedef struct table_catalog_array{
     table_catalog *all_tables;
 } catalogs;
 
-// Catalog Functions
-
+// Catalog & Helper Functions
 catalogs* initialize_catalogs();
-void manage_catalogs(catalogs *logs, int table_count, bool increase);
+int type_conversion(char* type);
 void init_catalog(table_catalog* catalog, int tid, char *table_name );
 void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int rel_count, char *name);3
 // Manage functions increase sizes of corresponding dynamic arrays
-void manage_attributes(table_catalog* t_cat, int attr_count);
-void manage_foreign_rels(table_catalog *t_cat, int rel_coutn);
-void manage_prim_tuple(table_catalog *t_cat, int prim_size);
-void manage_unique_tuple(table_catalog *t_cat, int size);
+void manage_catalogs(catalogs *logs, int table_count, bool increase);
+void manage_attributes(table_catalog* t_cat, int attr_count, bool increase);
+void manage_foreign_rels(table_catalog *t_cat, int rel_coutn, bool increase);
+void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase);
+void manage_unique_tuple(table_catalog *t_cat, int size, bool increase);
 
-int type_conversion(char* type);
 // Read And Write Catalogs
 int read_catalogs(char *db_loc, catalogs* logs);
 int write_catalogs(char *db_loc, catalogs* logs);
