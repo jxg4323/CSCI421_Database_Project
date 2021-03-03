@@ -33,6 +33,7 @@ typedef struct foreign_table_info{
 
 typedef struct unique_info{
     int tup_size;
+    bool deleted;
     int *attr_tuple;
 } unique;
 
