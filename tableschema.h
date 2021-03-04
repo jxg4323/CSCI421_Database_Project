@@ -32,7 +32,7 @@ typedef struct foreign_table_info{
 
 typedef struct unique_info{
     int tup_size;
-    bool deleted;
+    bool deleted; // DON'T STORE --> if True then don't write
     int *attr_tuple;
 } unique;
 
@@ -58,7 +58,7 @@ typedef struct table_catalog{
     char *table_name;
     attr_info *attributes; // constraints array and data types
     foreign_data *relations;
-    unique *unique_tuple;
+    unique *unique_tuples;
     int *primary_tuple;
 } table_catalog;
 
@@ -67,11 +67,27 @@ typedef struct table_catalog_array{
     table_catalog *all_tables;
 } catalogs;
 
-// Catalog & Helper Functions
-catalogs* initialize_catalogs();
+// Helper Functions
 int type_conversion(char* type);
-void init_catalog(table_catalog* catalog, int tid, char *table_name );
-void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int rel_count, char *name);3
+int get_table_count_no_deletes(catalogs* logs);
+int get_attribute_count_no_deletes(table_catalog* t_cat);
+int get_relation_count_no_deletes(table_catalog* tcat);
+int get_unique_count_no_deletes(table_catalog* tcat);
+void pretty_print_catalogs(catalogs* logs);
+void pretty_print_table(table_catalog* tcat);
+void pretty_print_attributes( attr_info* attributes, int size );
+void pretty_print_relations( foreign_data* relations, int size );
+void pretty_print_unique_tuples( unique* tuples, int size );
+void pretty_print_primary_tuples( int* prim_tup, int size );
+
+// Catalog Functions
+catalogs* initialize_catalogs();
+void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name);
+void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);
+void init_foreign_relation(foreign_data* fdata, int fid, int size, int *orig_attrs, int *for_attrs);
+void init_unique_tuple(unique* udata, int tup_size, int *tuple);
+void init_primary_tuple(table_catalog *t_cat, int *tuple, int size);
+
 // Manage functions increase sizes of corresponding dynamic arrays
 void manage_catalogs(catalogs *logs, int table_count, bool increase);
 void manage_attributes(table_catalog* t_cat, int attr_count, bool increase);
