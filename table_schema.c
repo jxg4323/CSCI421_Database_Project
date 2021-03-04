@@ -506,16 +506,20 @@ void pretty_print_catalogs(catalogs* logs){
 void pretty_print_table(table_catalog* tcat){
 	printf("Table: {name: %s, deleted: %d, attribute_count: %d, "
 			"foreign_size: %d, primary_size: %d,"" unique_tuples: %d, " 
-			"attributes: \n",
+			"Attributes: \n",
 			tcat->tables_name, tcat->deleted, tcat->attribute_count, 
 			tcat->foreign_size, tcat->primary_size, tcat->unique_size );
 	// print attributes
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );
-	printf("Foreign Relations\n");
+	printf("Foreign Relations:\n");
 	// print relations
-
+	pretty_print_relations( tcat->relation, tcat->foreign_size );
+	printf("Unique Tuples:\n");
 	// print unique tuples
+	pretty_print_unique_tuples( tcat->unique_tuples, tcat->unique_size );
+	printf("Primary Key:\n");
 	// print primary key
+	pretty_print_primary_tuples( tcat->primary_tuple, tcat->primary_size );
 }
 
 void pretty_print_attributes( attr_info* attributes, int size ){
@@ -533,22 +537,45 @@ void pretty_print_relations( foreign_data* relations, int size ){
 				relations[i].name, relations[i].foreign_table_id, relations[i].deleted ? 1 : 0,
 				relations[i].tuple_size);
 		for( int j = 0; j<tup_size; j++ ){
-			if(j == tup_size-1){printf("%d",relations[i].orig_attr_locs[j]);}
-			else{printf("%d,",relations[i].orig_attr_locs[j]);}
+			if(j == tup_size-1){
+				printf("%d",relations[i].orig_attr_locs[j]);
+			}else{
+				printf("%d, ",relations[i].orig_attr_locs[j]);
+			}
 		}
 		printf("], Foreign Atrributes: [");
 		for( int j = 0; j<tup_size; j++ ){
-			if(j == tup_size-1){printf("%d",relations[i].for_attr_locs[j]);}
-			else{printf("%d,",relations[i].for_attr_locs[j]);}
+			if(j == tup_size-1){
+				printf("%d",relations[i].for_attr_locs[j]);
+			}else{
+				printf("%d, ",relations[i].for_attr_locs[j]);
+			}
 		}
 		printf("]\n");
 	}
 }
 
 void pretty_print_unique_tuples( unique* tuples, int size ){
-
+	for(int i = 0; i<size; i++){
+		printf("\t(");
+		for(int j = 0; j<tuples[i].tup_size; j++){
+			if(j == tuples[i].tup_size-1){
+				printf("%d", tuples[i].attr_tuple[j]);
+			}else{
+				printf("%d,", tuples[i].attr_tuple[j]);
+			}
+		}
+		printf(")\n");
+	}
 }
 
 void pretty_print_primary_tuples( int* prim_tup, int size ){
-
+	printf("Primary Key: [");
+	for( int i = 0; i<size; i++ ){
+		if( i == size-1){
+			printf("%d", prim_tup[i]);
+		}
+		printf("%d, ", prim_tup[i]);
+	}
+	printf("]\n");
 }
