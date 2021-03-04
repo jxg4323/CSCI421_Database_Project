@@ -313,7 +313,6 @@ int write_catalogs(char *db_loc, catalogs* logs){
 		// write primary key tuple
 		fwrite(logs->all_tables[indx].primary_tuple, sizeof(int), logs->all_tables[indx].primary_size, fp);
 
-		
 		if(feof(fp) || indx == (logs->table_count -1)){ // read until end of file or no more tables
 			break;
 		}
@@ -328,9 +327,12 @@ int write_catalogs(char *db_loc, catalogs* logs){
  TODO: redo
  */
 int new_catalog(catalogs *logs, char *table_name){
+	if( check_table_name( logs,table_name ) ){ 
+		fprintf(stderr,"ERROR: new_catalog, table_name already in use.\n");
+		return -1; 
+	}
 	int last = logs->table_count;
 	manage_catalogs( logs, logs->table_count+1, true );
-	//TODO: confirm table name is unique
 	init_catalog( &(logs->all_tables[last]),last,0,table_name );
 	return last;
 }
@@ -340,7 +342,6 @@ int new_catalog(catalogs *logs, char *table_name){
  * count for the table.
  * @param @constraints: layout of array [<notnull>, <primarykey>, <unique>]
  * Return 1 for success and -1 for failure.
- TODO: redo
  */
 int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]){
 	int last = t_cat->attribute_count;
@@ -350,32 +351,21 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
 		return -1;
 	}
 	manage_attributes( t_cat, t_cat->attribute_count+1 );
-	init_attribute( &(t_cat->attributes[last]), type, constraints[0], constraints[1], constraints[2], 0 );
+	init_attribute( &(t_cat->attributes[last]), type, constraints[0], constraints[1], constraints[2], attr_name );
 	return 1;
 }
 
 /*
  * Mark an attribute as deleted in the attribute information matrix. If an 
  * attribute is marked as removed then don't write it to the disk.
+ * Check if attribute is apart of foreign key, primary key, or unique tuple.
  * Return 1 for success and -1 for failure.
  TODO: redo
  */
 int remove_attribute(table_catalog* t_cat, char *attr_name){
-
-}
-
-/*
- * Find the attribute listed in the parameters in the table
- * and return the index of the attribute in the array. If
- * the attribute isn't found the return -1.
- TODO: redo
- */
-int find_attr(table_catalog* t_cat, char *attr_name){
-	int count = t_cat->attribute_count;
-	int loc = -1;
-	for( int i = 0; i < count; i++ ){
-		if( strcmp(t_cat->attributes[i].name, attr_name) == 0 ){ loc = i; }
-	}
+	// search through relations array to find if attr_name is apart of a relation & if so delete it
+	// Check if primary key contains this attribute
+	// Check if any unique tuples contiain the attribute
 }
 
 /*
@@ -385,31 +375,131 @@ int find_attr(table_catalog* t_cat, char *attr_name){
  * Return 1 with success of foreign info addition and -1 otherwise.
  TODO: redo
  */
-int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count){}
+int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count){
+	
+}
+
+/*
+ * The foreign row is the an array of tokens that are as follows:
+ *      ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
+ * Change the deleted marker to 1 without decreasing the size of 
+ * foreign relations. 
+ * Return location of foreign_data in array if successful o.w. -1.
+ */
+int remove_foreign_data(table_catalog* t_cat, char**foreign_row, int f_count){}
+
+/*
+ * Loop through the attribute information in the table catalog and
+ * apply the primary key constraint to the attributes whose names
+ * match those in the @param prim_names. Confirm the attributes aren't
+ * already apart of a primary key for the table as well as confirm the
+ * table doesn't have a primary key already if so return -1.
+ *
+ * Return 1 with succesful upate and -1 otherwise.
+ */
+int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){}
+
+/*
+ * Delete the primary key information from the table.
+ * Return 1 with success and -1 otherwise.
+ */
+int remove_primary_key(table_catalog* t_cat){}
+
+/*
+ * Confirm no other unique tuples have the combination of attributes,
+ * if so return -1 and print an error. Otherwise return 1.
+ */
+int add_unique_key(table_catalog* t_cat, char **unique_name, int size){}
+
+/*
+ * Remove the unique tuple based on the tuple provided, find the tuple
+ * that matches and remove it.
+ * If successfull return 1 otherwise return -1.
+ */
+int remove_unique_key(table_catalog* t_cat, char** unique_name, int size){}
 
 /*
  * Search through all catalog information to find the one with
  * the same table name as provided, given that all table names
  * are unique.
  * Return pointer to the table catalog or NULL if there isn't one. 
- TODO: redo
  */
-table_catalog* get_catalog(catalogs *logs, char *tname){}
+int get_catalog(catalogs *logs, char *tname){
+	int loc = -1;
+	for( int i = 0; i<logs->table_count; i++ ){
+		if( strcmp(logs->all_tables[i].table_name, tname) == 0 ){ loc = i; }
+	}
+	return loc;
+}
 
 /*
  * Based on the table id retrieve the attribute location
  * in the table catalog.
  * Return location of attribute in table if found, o.w. -1.
- TODO: redo
  */
-int get_attr_loc(catalogs *logs, int tid, char *attr_name){}
+int get_attr_loc(table_catalog *tcat, char *attr_name){
+	int loc = -1;
+	for( int i = 0; i<tcat->attribute_count; i++ ){
+		if( strcmp(tcat->attributes[i].name, attr_name) == 0 ){ loc = i; }
+	}
+	return -1;
+}
 
 /*
  * Check if the table name is already in use.
  * Return True if a table name is found, false otherwise.
- TODO: redo
  */
-bool check_table_name(catalogs *log, char *tname){}
+bool check_table_name(catalogs *logs, char *tname){
+	bool in_use = false;
+	for( int i = 0; i<logs->table_count; i++ ){
+		if( strcmp(logs->all_tables[i].table_name, tname) == 0 ){ in_use = true; }
+	}
+	return in_use;
+}
+
+/*
+ * Find the attribute listed in the parameters in the table
+ * and return the index of the attribute in the array. If
+ * the attribute isn't found the return -1.
+ */
+int find_attr(table_catalog* t_cat, char *attr_name){
+	int count = t_cat->attribute_count;
+	int loc = -1;
+	for( int i = 0; i < count; i++ ){
+		if( strcmp(t_cat->attributes[i].name, attr_name) == 0 ){ loc = i; }
+	}
+	return loc;
+}
+
+/*
+ * Loop through the tables and free the memory allocated for their
+ * arrays and then free the contents of logs, but the user has to 
+ * free the parameter logs.
+ */ 
+void terminate_catalog(catalogs *logs){
+	for( int i = 0; i<logs->table_count; i++ ){
+		// attribute heap memory
+		for(int j = 0; j<logs->all_tables[i].attribute_count; j++){
+			free( logs->all_tables[i].attributes[j].name ); // free name of attribute
+		}
+		// relation heap memory
+		for(int j = 0; j<logs->all_tables[i].foreign_size; j++){
+			free( logs->all_tables[i].relations[j].name );
+			free( logs->all_tables[i].relations[j].orig_attr_locs );
+			free( logs->all_tables[i].relations[j].for_attr_locs );
+		}
+		// unique tuples heap memory
+		for(int j = 0; j<logs->all_tables[i].unique_size; j++){
+			free( logs->all_tables[i].unique_tuples[j].attr_tuple );
+		}
+		// table heap memory
+		free( logs->all_tables[i].table_name );
+		free( logs->all_tables[i].attributes );
+		free( logs->all_tables[i].relations );
+		free( logs->all_tables[i].primary_tuple );
+	}
+	free( logs->all_tables );
+}
 
 // Helper Functions
 

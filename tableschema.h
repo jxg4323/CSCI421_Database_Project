@@ -161,25 +161,33 @@ int remove_primary_key(table_catalog* t_cat);
 int add_unique_key(table_catalog* t_cat, char **unique_name, int size);
 
 /*
+ * Remove the unique tuple based on the tuple provided, find the tuple
+ * that matches and remove it.
+ * If successfull return 1 otherwise return -1.
+ */
+int remove_unique_key(table_catalog* t_cat, char** unique_name, int size);
+
+/*
  * Search through all catalog information to find the one with
  * the same table name as provided, given that all table names
  * are unique.
- * Return pointer to the table catalog or NULL if there isn't one. 
+ * Return index for the table catalog in logs or -1 if there 
+ * isn't one. 
  */
-table_catalog* get_catalog(catalogs *logs, char *tname);
+int get_catalog(catalogs *logs, char *tname);
 
 /*
  * Based on the table id retrieve the attribute location
  * in the table catalog.
  * Return location of attribute in table if found, o.w. -1.
  */
-int get_attr_loc(catalogs *logs, int tid, char *attr_name);
+int get_attr_loc(table_catalog *tcat, char *attr_name);
 
 /*
  * Check if the table name is already in use.
  * Return True if a table name is found, false otherwise.
  */
-bool check_table_name(catalogs *log, char *tname);
+bool check_table_name(catalogs *logs, char *tname);
 
 /*
  * Write catalog information to disk and free pointer.
