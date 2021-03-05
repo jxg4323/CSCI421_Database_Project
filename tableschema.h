@@ -98,6 +98,8 @@ void manage_unique_tuple(table_catalog *t_cat, int size, bool increase);
 // Read And Write Catalogs
 int read_catalogs(char *db_loc, catalogs* logs);
 int write_catalogs(char *db_loc, catalogs* logs);
+
+// Manage Catalog Functions
 /*
  * Create new table catalog with just table name and newly allocated structure
  * Return location of new catalog in array if success otherwise -1.
@@ -126,7 +128,7 @@ int remove_attribute(table_catalog* t_cat, char *attr_name);
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
-int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count);
+int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count);
 
 /*
  * The foreign row is the an array of tokens that are as follows:
@@ -135,7 +137,7 @@ int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count);
  * foreign relations. 
  * Return location of foreign_data in array if successful o.w. -1.
  */
-int remove_foreign_data(table_catalog* t_cat, char**foreign_row, int f_count);
+int remove_foreign_data(catalogs* logs, table_catalog* t_cat, char**foreign_row, int f_count);
 
 /*
  * Loop through the attribute information in the table catalog and
@@ -177,6 +179,14 @@ int remove_unique_key(table_catalog* t_cat, char** unique_name, int size);
 int get_catalog(catalogs *logs, char *tname);
 
 /*
+ * Search through all catalog information to find the one with
+ * the same table name as provided, given that all table names
+ * are unique.
+ * Return pointer to the table catalog or NULL if there isn't one. 
+ */
+table_catalog* get_catalog_p(catalogs* logs, char* tname);
+
+/*
  * Based on the table id retrieve the attribute location
  * in the table catalog.
  * Return location of attribute in table if found, o.w. -1.
@@ -188,6 +198,25 @@ int get_attr_loc(table_catalog *tcat, char *attr_name);
  * Return True if a table name is found, false otherwise.
  */
 bool check_table_name(catalogs *logs, char *tname);
+
+/*
+ * Look through the primary key to see if the primary
+ * key contains the provided attribute ID and if so 
+ * return TRUE other wise return FALSE indication the 
+ * primary key DOES NOT contain the attribute.
+ */
+bool check_prim_key( table_catalog* tcat, int attr_id );
+
+/*
+ * Search through the foreign relations to find any relations which 
+ * contain the provided attribute ID and place the location of the relations
+ * in the @param ret_arr (should have allocated num_relations*sizeof(int)) 
+ * which assumes all realtions contain the attribute which the user is 
+ * responsible for freeing after call. 
+ * Return size of the ret_arr if there were nay found and if no relations 
+ * contained the attribute then return -1.
+ */
+int check_foreign_relations( table_catalog* tcat, int attr_id, int *ret_arr );
 
 /*
  * Write catalog information to disk and free pointer.
