@@ -363,9 +363,25 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
  TODO: redo
  */
 int remove_attribute(table_catalog* t_cat, char *attr_name){
-	// search through relations array to find if attr_name is apart of a relation & if so delete it
+	int attr_id = get_attr_loc(t_cat, attr_name);
+	// confirm attribute exists
+	if(attr_id == -1){ fprintf(stderr, "ERROR: Attribute doesn't exist\n" ); return -1; }
 	// Check if primary key contains this attribute
+	if( check_prim_key(tcat, attr_id) ){ 
+		fprintf(stderr, "ERROR: Attribute: %s is apart of the primary key and CANNOT be removed\n", attr_name);
+		return -1;
+	}
+	int *tmp = (int *)malloc(t_cat->foreign_size*sizeof(int));
+	// search through relations array to find if attr_name is apart of a relation & if so delete it
+	int num = check_foreign_relations( t_cat, attr_id, tmp );
+	for( int i = 0; i<num; i++ ){
+		t_cat->relations[tmp[i]].deleted = true;
+	}
+	free( tmp );
+	// if attribute is contained in a relation delete the corresponding foreign table's relation
+	
 	// Check if any unique tuples contiain the attribute
+		// IF SO then remove the unique key
 }
 
 /*
@@ -373,10 +389,33 @@ int remove_attribute(table_catalog* t_cat, char *attr_name){
  * allocate or reallocate memory for the addidtion of the next foreign reference.
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
- TODO: redo
  */
-int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count){
-	
+int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count){
+	char *f_name = foreign_row[0];
+	table_catalog* for_cat = get_catalog_p( logs, f_name );
+	manage_foreign_rels( t_cat, t_cat->foreign_size+1, true );
+	int *o_arr = (int *)malloc(f_key_count*sizeof(int));
+	int *f_arr = (int *)malloc(f_key_count*sizeof(int));
+	int s = (1+f_count);
+	int c = 0;
+	int t = 0;
+	for( int j = 1; j<f_count; j++ ){ 
+		int tmp = 0;
+		if( j < s ){
+			tmp = get_attr_loc( t_cat, foreign_row[j] );
+			o_arr[c] = tmp;
+			c++;
+		}else if( j >= s ){
+			tmp = get_attr_loc( for_cat, foreign_row[j] );
+			f_arr[t] = tmp;
+			t++;
+		}
+	}
+	init_foreign_relation( &(t_cat->relations[t_cat->foreign_size]), for_cat->id, f_key_count, o_arr, f_arr );
+	free( o_arr );
+	free( f_arr );
+	t_cat->foreign_size++;
+	return 1;
 }
 
 /*
@@ -384,9 +423,42 @@ int add_foreign_data(table_catalog* t_cat, char **foreign_row, int f_key_count){
  *      ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
  * Change the deleted marker to 1 without decreasing the size of 
  * foreign relations. 
+ * @param f_count: number of attributes in relation, using above example
+ * 					f_count would be 2.
  * Return location of foreign_data in array if successful o.w. -1.
  */
-int remove_foreign_data(table_catalog* t_cat, char**foreign_row, int f_count){}
+int remove_foreign_data(catalogs* logs, table_catalog* t_cat, char**foreign_row, int f_count){
+	char *f_name = foreign_row[0];
+	table_catalog* for_cat = get_catalog_p( logs, f_name );
+	int size = (2*f_count)+1;
+	int *arr = (int*)malloc((size-1)*sizeof(int));
+	// converts foreign_row to int array
+	int s = (1+f_count);
+	for( int j = 1; j<f_count; j++ ){ 
+		int tmp = 0;
+		if( j < s ){
+			tmp = get_attr_loc( t_cat, foreign_row[j] );
+		}else if( j >= s ){
+			tmp = get_attr_loc( for_cat, foreign_row[j] );
+		}
+		arr[j-1] = tmp;
+	}
+	for( int i = 0; i <t_cat->foreign_size; i++ ){ // compare each foreign relation until equal is found
+		if( t_cat->relations[i].deleted || t_cat->relations[i].tuple_size != f_count ){ continue; }
+		int count = 0;
+		for( int j = 0; j<t_cat->relations[i].tuple_size; j++ ){
+			if( arr[i] == t_cat->relations[i].orig_attr_locs[j] ){ count++; }
+			if( arr[i] == t_cat->relations[i].for_attr_locs[j] ){ count++; }
+		}
+		if( count == size-1 && strcmp(f_name, t_cat->relations[i].name) == 0){
+			t_cat->relations[i].deleted = true;
+			free( arr );
+			return i;
+		}
+	}
+	free( arr );
+	return -1;
+}
 
 /*
  * Loop through the attribute information in the table catalog and
@@ -397,32 +469,108 @@ int remove_foreign_data(table_catalog* t_cat, char**foreign_row, int f_count){}
  *
  * Return 1 with succesful upate and -1 otherwise.
  */
-int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){}
+int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){
+	// Confirm there isn't already a primary key tuple --> print error msg & return -1
+	if( t_cat->primary_size > 0 ){
+		fprintf( stderr, "ERROR: there already exists a primary key.\n" );
+		return -1;
+	}
+	int *tmp = (int *)malloc(num_keys*sizeof(int));
+	// Find attribute locations of each of provided attributes
+	for( int i = 0; i<num_keys; i++ ){
+		tmp[i] = get_attr_loc( t_cat, prim_names[i] );
+	}
+	// Allocate memory for primary key size
+	manage_prim_tuple( t_cat, num_keys, false );
+	// Copy of attribute locations of each attribute
+	init_primary_tuple( t_cat, tmp, num_keys );
+	free( tmp );
+	return 1;
+}
 
 /*
  * Delete the primary key information from the table.
  * Return 1 with success and -1 otherwise.
  */
-int remove_primary_key(table_catalog* t_cat){}
+int remove_primary_key(table_catalog* t_cat){
+	// memset the primary key to 0's
+	memset( t_cat->primary_tuple, 0, t_cat->primary_size*sizeof(int) );
+	// set primary key size ot 0
+	t_cat->primary_size = 0;
+	// free the pointer
+	free( t_cat->primary_tuple );
+	return 1;
+}
 
 /*
  * Confirm no other unique tuples have the combination of attributes,
  * if so return -1 and print an error. Otherwise return 1.
  */
-int add_unique_key(table_catalog* t_cat, char **unique_name, int size){}
+int add_unique_key(table_catalog* t_cat, char **unique_name, int size){
+	int last = t_cat->unique_size;
+	int *arr = (int*)malloc((size)*sizeof(int));
+	for( int i = 0; i<size; i++ ){ 
+		arr[i] = get_attr_loc( t_cat, unique_name[i] );
+	}
+	for( int i = 0; i<t_cat->unique_size; i++ ){
+		int count = 0;
+		// if unique tuple is deleted or sizes don't match skip it
+		if( t_cat->unique_tuples[i].deleted || t_cat->unique_tuples[i].tup_size != size ){ continue; }
+		for( int j = 0; j<t_cat->unique_tuples[i].tup_size; j++ ){
+			if( t_cat->unique_tuples[i].attr_tuple[j] == arr[j] ){ count++; }
+		}
+		if( count == size ){ 
+			fprintf(stderr, "ERROR: the unique tuple is already in the table.\n");
+			return -1;
+		}
+	}
+	// Create new unique tuple in table
+	manage_unique_tuple( t_cat, t_cat->unique_size+1, true);
+	init_unique_tuple( &(t_cat->unique_tuples[last]), arr, size );
+	free( arr );
+	t_cat->unique_size++;
+	return 1;
+}
 
 /*
  * Remove the unique tuple based on the tuple provided, find the tuple
  * that matches and remove it.
  * If successfull return 1 otherwise return -1.
  */
-int remove_unique_key(table_catalog* t_cat, char** unique_name, int size){}
+int remove_unique_key(table_catalog* t_cat, char** unique_name, int size){
+	// Find locations of attributes in unique_name provided
+	int *arr = (int*)malloc((size)*sizeof(int));
+	for( int i = 0; i<size; i++ ){ 
+		arr[i] = get_attr_loc( t_cat, unique_name[i] );
+	}
+	// Find tuple that matches it in table
+	for( int i = 0; i <t_cat->unique_size; i++ ){
+		// ignore deleted and size mismatched tuples
+		if(t_cat->unique_tuples[i].deleted || t_cat->unique_tuples[i].tup_size != size ){ continue; }
+		// assume mismatch
+		int count = 0; 
+		for( int j = 0; j<size; j++ ){
+			if( arr[j] == t_cat->unique_tuples[i].attr_tuple[j] ){ count++; }
+		}
+		// if the tuples match mark the unique tuple as deleted and return 1
+		if( count == size ){ 
+			t_cat->unique_tuples[i].deleted = true;
+			free( arr );
+			return 1;
+		}
+	}
+	// If for loop concludes w/o return then no matching tuple was found
+	fprintf(stderr, "ERROR: provided unique tuple wasn't found in table %s\n", t_cat->table_name );
+	free( arr );
+	return -1;
+}
 
 /*
  * Search through all catalog information to find the one with
  * the same table name as provided, given that all table names
  * are unique.
- * Return pointer to the table catalog or NULL if there isn't one. 
+ * Return index for the table catalog in logs or -1 if there 
+ * isn't one. 
  */
 int get_catalog(catalogs *logs, char *tname){
 	int loc = -1;
@@ -430,6 +578,19 @@ int get_catalog(catalogs *logs, char *tname){
 		if( strcmp(logs->all_tables[i].table_name, tname) == 0 ){ loc = i; }
 	}
 	return loc;
+}
+
+/*
+ * Search through all catalog information to find the one with
+ * the same table name as provided, given that all table names
+ * are unique.
+ * Return pointer to the table catalog or NULL if there isn't one. 
+ */
+table_catalog* get_catalog_p(catalogs* logs, char* tname){
+	for( int i = 0; i<logs->table_count; i++ ){
+		if( strcmp(logs->all_tables[i].table_name, tname) == 0 ){ return &(logs->all_tables[i]); }
+	}
+	return NULL;
 }
 
 /*
@@ -441,6 +602,9 @@ int get_attr_loc(table_catalog *tcat, char *attr_name){
 	int loc = -1;
 	for( int i = 0; i<tcat->attribute_count; i++ ){
 		if( strcmp(tcat->attributes[i].name, attr_name) == 0 ){ loc = i; }
+	}
+	if( loc == -1 ){
+		fprintf(stderr, "ERROR: attribute doesn't exist in %s\n", tcat->table_name);
 	}
 	return -1;
 }
@@ -469,6 +633,47 @@ int find_attr(table_catalog* t_cat, char *attr_name){
 		if( strcmp(t_cat->attributes[i].name, attr_name) == 0 ){ loc = i; }
 	}
 	return loc;
+}
+
+/*
+ * Look through the primary key to see if the primary
+ * key contains the provided attribute ID and if so 
+ * return true other wise return false indication the 
+ * primary key DOES NOT contain the attribute.
+ */
+bool check_prim_key( table_catalog* tcat, int attr_id ){
+	bool result = false; // assume attribute isn't in key tuple
+	for( int i = 0; i<tcat->primary_size; i++ ){
+		if( tcat->primary_tuple == attr_id ){ 
+			result = true; 
+			return result;
+		}
+	}
+	return result;
+}
+
+/*
+ * Search through the foreign relations to find any relations which 
+ * contain the provided attribute ID and place the location of the relations
+ * in the @param ret_arr (should have allocated num_relations*sizeof(int)) 
+ * which assumes all realtions contain the attribute which the user is 
+ * responsible for freeing after call. 
+ * Return size of the ret_arr if there were nay found and if no relations 
+ * contained the attribute then return -1.
+ */
+int check_foreign_relations( table_catalog* tcat, int attr_id, int *ret_arr ){
+	int count = 0; // assume no relations involved
+	for( int i = 0; i<tcat->foreign_size; i++ ){
+		if( tcat->relations[i].deleted ){ continue; } // ignore deleted foreign relations
+		for( int j = 0; j<tcat->relations[i].tuple_size; j++ ){ // only look at attributes in table NOT foreign table
+			if( tcat->relations[i].orig_attr_locs[j] == attr_id ){
+				ret_arr[count] = i; // add relation location to return array
+				count++;
+				break; // once attribute found in relation go to next one
+			}
+		}
+	}
+	return (count == 0) ? -1 : count;
 }
 
 /*
