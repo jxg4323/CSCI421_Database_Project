@@ -57,7 +57,7 @@ int parse_create_statement( char * statement ){
         {
             printf("b = %s\n", token2);
             token2 = strtok_r(NULL, " ", &end_token);
-        }
+        } 
         token = strtok_r(NULL, "\n", &end_str);
     }
 
@@ -91,7 +91,30 @@ int parse_drop_statement( char * statement ){
  * @return 0 on sucess; -1 on failure
  */
 int parse_alter_statement( char * statement ){
+	char *data[100];
+  	int i=0;
 
+    char *end_str;
+    char *token = strtok_r(statement, " ", &end_str);
+
+    while (token != NULL)
+    {
+        //printf("a = %s\n", token);
+        data[i] = (char *)malloc(20);
+        strcpy(data[i], token);
+        i++;
+        token = strtok_r(NULL, " ", &end_str);
+    }
+
+    for (i = 0; i < sizeof(data); ++i){
+        printf("%s\n", data[i]);
+        free(data[i]);
+    }
+
+	//TODO:
+	// call the alter function with data as the parameter
+
+    return 0;
 }
 
 
