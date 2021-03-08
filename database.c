@@ -69,14 +69,14 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
     current = 3;
     while(current < token_count && validity != false){
-        if(strcmp(tokens[i], "primarykey") == 0){
+        if(strcmp(tokens[current], "primarykey") == 0){
             current++;
             char ** prims = malloc(sizeof(char *));
             int prim_count = 0;
-            while(strcmp(tokens[current], "") != 0){
+            while(strcmp(tokens[current], ",") != 0){
                 prim_count++;
-                prims = realloc(prim_count * sizeof(char *));
-                strcpy(prim[prim_count-1], tokens[current]);
+                realloc(prims, prim_count * sizeof(char *));
+                strcpy(prims[prim_count-1], tokens[current]);
                 current++;
             }
             int added = add_primary_key(&(cat->all_tables[table_index]), prims, prim_count);
@@ -89,9 +89,9 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             current++;
             char ** uniques = malloc(sizeof(char *));
             int uniq_count = 0;
-            while(strcmp(tokens[current], "") != 0){
+            while(strcmp(tokens[current], ",") != 0){
                 uniq_count++;
-                uniques = realloc(uniq_count * sizeof(char *));
+                realloc(uniques, uniq_count * sizeof(char *));
                 strcpy(uniques[uniq_count-1], tokens[current]);
                 current++;
             }
@@ -109,15 +109,15 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             while(strcmp(tokens[current], "references") != 0){
                 foreign_count++;
                 key_count++;
-                foreigns = realloc(foreign_count * sizeof(char *));
+                realloc(foreigns, foreign_count * sizeof(char *));
                 strcpy(foreigns[foreign_count-1], tokens[current]);
                 current++;
             }
             current++;
             strcpy(foreigns[0], tokens[current]);
-            while(strcmp(tokens[current], "") != 0){
+            while(strcmp(tokens[current], ",") != 0){
                 foreign_count++;
-                foreigns = realloc(foreign_count * sizeof(char *));
+                realloc(foreigns, foreign_count * sizeof(char *));
                 strcpy(foreigns[foreign_count-1], tokens[current]);
                 current++;
             }
@@ -131,7 +131,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int name_idx = current++;
             int type_idx = current++;
             int constraints[3] = { 0 };
-            while(strcmp(tokens[current], "") != 0 && validity != false){
+            while(strcmp(tokens[current], ",") != 0 && validity != false){
                 if(strcmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
                     current++;
@@ -164,11 +164,11 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     }
 }
 
-int drop_table_ddl( catalogs cat, char *name ){
+int drop_table_ddl( catalogs *cat, char *name ){
     int idx = get_catalog(cat, name);
     if( idx == -1 ){ return idx; }
-    int success = drop_table( cat.all_tables[idx].id );
+    int success = drop_table( cat->all_tables[idx].id );
     if( success == -1 ){ return success; }
-    cat.all_tables[idx].deleted = 1;
+    cat->all_tables[idx].deleted = 1;
     return 1;
 }

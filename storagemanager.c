@@ -5,6 +5,7 @@ Professor: Scott Johnson
 */
 #include "storagemanager.h"
 #include "storage.h"
+#include "pagedescriptor.h"
 
 
 /* 
