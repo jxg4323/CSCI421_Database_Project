@@ -2,9 +2,7 @@
 #ifndef __DATABASE_H__
 #define __DATABASE_H__
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
+#include "tableschema.h"
 
 void usage(bool error);
 int * arg_manager(bool restart, char const *argv[], int argc);
