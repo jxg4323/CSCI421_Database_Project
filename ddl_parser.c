@@ -54,17 +54,20 @@ int parse_create_statement( char * statement ){
 
     while (token != NULL)
     {
-        printf("a = %s\n", token);
+        //printf("a = %s\n", token);
         data[i] = (char *)malloc(20);
         strcpy(data[i], token);
         i++;
         token = strtok_r(NULL, " ", &end_str);
     }
 
-    for (i = 0; i < 100; ++i){
-        printf("%s\n", data[i]);
+    //for (i = 0; i < 100; ++i){
+        //printf("%s\n", data[i]);
         //free(data[i]);
-    }
+    //}
+
+	// TODO:
+	// call the function create
     return 0;
 }
 
@@ -95,7 +98,8 @@ int parse_drop_statement( char * statement ){
  * @return 0 on sucess; -1 on failure
  */
 int parse_alter_statement( char * statement ){
-	char *data[100];
+	// data is a 2d array of strings
+  	char *data[100];
   	int i=0;
 
     char *end_str;
@@ -103,15 +107,11 @@ int parse_alter_statement( char * statement ){
 
     while (token != NULL)
     {
-        //printf("a = %s\n", token);
+        printf("a = %s\n", token);
         data[i] = (char *)malloc(20);
         strcpy(data[i], token);
         i++;
         token = strtok_r(NULL, " ", &end_str);
-    }
-
-    for (i = 0; i < sizeof(data); ++i){
-        printf("%s\n", data[i]);
     }
 
 	//TODO:
