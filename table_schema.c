@@ -183,33 +183,37 @@ int read_catalogs(char *db_loc, catalogs* logs){
 		fread(&unique_count, sizeof(int), 1, fp);
 		fread(&prim_count, sizeof(int), 1, fp);
 		fread(&name_size, sizeof(int), 1, fp);
-		char *temp = (char *)malloc(name_size*sizeof(char));
-		memset(temp, 0, name_size*sizeof(char));
+		char *temp = (char *)malloc((name_size+1)*sizeof(char));
+		memset(temp, '\0', (name_size+1)*sizeof(char));
 		fread(temp, sizeof(char), name_size, fp);
 		init_catalog( &(logs->all_tables[indx]), t_id, a_count, foreign_count, prim_count, unique_count, temp );
 		// read attribute info 
+		char *a_name;
 		for(int i = 0; i < a_count; i++){
 			int type, notnull, primkey, unique, rel_count;
 			name_size = 0;
 			fread(&type, sizeof(int), 1, fp);
 			fread(&notnull, sizeof(int), 1, fp);
 			fread(&primkey, sizeof(int), 1, fp);
+			fread(&unique, sizeof(int), 1, fp);
 			fread(&name_size, sizeof(int), 1, fp);
-			char *a_name = (char *)malloc(name_size*sizeof(char));
-			memset(a_name, 0, name_size*sizeof(char));
+			a_name = (char *)malloc((name_size+1)*sizeof(char)); // TODO: add null character at end
+			memset(a_name, '\0', (name_size+1)*sizeof(char));
 			fread(a_name, sizeof(char), name_size, fp);
+			printf("Name: %s, strlen(a_name): %d, name_size: %d\n", a_name, strlen(a_name), name_size);
 			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, a_name);
 			free(a_name);
 		}
 		// read foreign relation information
+		char *name;
 		for(int i = 0; i < foreign_count; i++){
 			int fid, size;
 			name_size = 0;
 			fread(&fid, sizeof(int), 1, fp);
 			fread(&size, sizeof(int), 1, fp);
 			fread(&name_size, sizeof(int), 1, fp);
-			char *name = (char *)malloc(name_size*sizeof(char));
-			memset(name, 0, name_size*sizeof(char));
+			name = (char *)malloc((name_size+1)*sizeof(char));
+			memset(name, '\0', (name_size+1)*sizeof(char));
 			fread(name, sizeof(char), name_size, fp);
 			int *orig_temp = (int *)malloc(size*sizeof(int));
 			int *for_temp = (int *)malloc(size*sizeof(int));
@@ -221,20 +225,19 @@ int read_catalogs(char *db_loc, catalogs* logs){
 			free( for_temp );
 		}
 		// read unique tuples
+		int *arr;
 		for(int i = 0; i < unique_count; i++){
 			int size;
 			fread(&size, sizeof(int), 1, fp);
-			int *arr = (int *)malloc(size*sizeof(int));
+			arr = (int *)malloc(size*sizeof(int));
 			fread(arr, sizeof(int), size, fp);
 			init_unique_tuple( &(logs->all_tables[indx].unique_tuples[i]), size, arr);
 			free( arr );
 		}
 		// read primary key tuple
-		int p_size;
-		fread(&p_size, sizeof(int), 1, fp);
-		int *p_temp = (int *)malloc(p_size*sizeof(int));
-		fread(p_temp, sizeof(int), p_size, fp);
-		init_primary_tuple(&(logs->all_tables[indx]), p_temp, p_size);
+		int *p_temp = (int *)malloc(prim_count*sizeof(int));
+		fread(p_temp, sizeof(int), prim_count, fp);
+		init_primary_tuple(&(logs->all_tables[indx]), p_temp, prim_count);
 
 		if(feof(fp) || indx == (count -1)){ // read until end of file or no more tables
 			break;
@@ -253,8 +256,6 @@ int read_catalogs(char *db_loc, catalogs* logs){
  * for freeing the logs.
  */
 int write_catalogs(char *db_loc, catalogs* logs){
-	// TODO: change to accomodate new structure --> accomodate deleted flags
-	// MAKE sure when writing attributes that the length of the name is written
 	FILE* fp;
 
 	int file_len = strlen(db_loc) + TABLE_CATALOG_FILE_LEN;
@@ -273,7 +274,7 @@ int write_catalogs(char *db_loc, catalogs* logs){
 	for( int indx = 0; indx < logs->table_count; indx++ ){
 		if ( logs->all_tables[indx].deleted ){continue;} // don't write the deleted table info
 		int tru_acount, tru_relcount, tru_unicount;
-		// get counts of array information without deltes
+		// get counts of array information without deletes
 		tru_acount = get_attribute_count_no_deletes( &(logs->all_tables[indx]) );
 		tru_relcount = get_relation_count_no_deletes( &(logs->all_tables[indx]) );
 		tru_unicount = get_unique_count_no_deletes( &(logs->all_tables[indx] ));
@@ -292,6 +293,7 @@ int write_catalogs(char *db_loc, catalogs* logs){
 			fwrite(&(logs->all_tables[indx].attributes[i].type), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].notnull), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].primarykey), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].unique), sizeof(int), 1, fp);
 			fwrite(&name_size, sizeof(int), 1, fp);
 			fwrite(logs->all_tables[indx].attributes[i].name, sizeof(char), name_size, fp);
 		}
@@ -434,7 +436,7 @@ int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, i
 	for( int j = 1; j<(2*f_key_count)+1; j++ ){ 
 		int tmp = 0;
 		if( j <= s ){
-			tmp = get_attr_loc( t_cat, foreign_row[j] );
+			tmp = get_attr_loc( t_cat, foreign_row[j] ); //TODO: add error if attribute doesn't exists
 			o_arr[c] = tmp;
 			c++;
 		}else if( j > s ){
