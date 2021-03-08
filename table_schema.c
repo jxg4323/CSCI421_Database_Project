@@ -362,10 +362,13 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
  * Return 1 for success and -1 for failure.
  TODO: redo
  */
-int remove_attribute(table_catalog* t_cat, char *attr_name){
+int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name){
 	int attr_id = get_attr_loc(t_cat, attr_name);
 	// confirm attribute exists
-	if(attr_id == -1){ fprintf(stderr, "ERROR: Attribute doesn't exist\n" ); return -1; }
+	if(attr_id == -1){ 
+		fprintf(stderr, "ERROR: Attribute %s doesn't exist\n", attr_name ); 
+		return -1; 
+	}
 	// Check if primary key contains this attribute
 	if( check_prim_key(tcat, attr_id) ){ 
 		fprintf(stderr, "ERROR: Attribute: %s is apart of the primary key and CANNOT be removed\n", attr_name);
@@ -378,10 +381,30 @@ int remove_attribute(table_catalog* t_cat, char *attr_name){
 		t_cat->relations[tmp[i]].deleted = true;
 	}
 	free( tmp );
-	// if attribute is contained in a relation delete the corresponding foreign table's relation
-	
+	// loop through all tables to confirm the attribute isn't apart of another foreign relation
+	for( int i = 0; i<logs->table_count; i++ ){
+		// look at tables relation
+		for( int j = 0; j<(logs->all_tables[i].foreign_size); j++ ){
+			// if the relation was deleted or the foreign table isn't the same as the provided table continue
+			if( logs->all_tables[i].relations[j].deleted || strcmp(t_cat->table_name,logs->all_tables[i].relations[j].name) != 0 ){
+				continue;
+			}
+			int tup_size = logs->all_tables[i].relations[j].tuple_size;
+			// loop through attributes
+			for( int s = 0; s<tup_size; s++ ){
+				// if attributes are the same then mark relation as deleted 
+				if(	logs->all_tables[i].relations[j].for_attr_locs[s] == attr_id ){
+					logs->all_tables[i].relations[j].deleted = true;
+					j = logs->all_tables[i].foreign_size;
+					i = logs->table_count;
+					break;
+				}
+			}
+		}
+	}
 	// Check if any unique tuples contiain the attribute
-		// IF SO then remove the unique key
+	int result = delete_uniq_tup( t_cat, attr_id );
+	return 1;
 }
 
 /*
@@ -674,6 +697,24 @@ int check_foreign_relations( table_catalog* tcat, int attr_id, int *ret_arr ){
 		}
 	}
 	return (count == 0) ? -1 : count;
+}
+
+/*
+ * Mark any unique tuples with the provided attribute id as 
+ * deleted and return 1 with success, -1 otherwise.
+ */
+int delete_uniq_tup( table_catalog* tcat, int attr_id ){
+	bool check = false
+	for( int i = 0; i<tcat->unique_size; i++ ){
+		for( int j = 0; j<tcat->unique_tuples[i].tup_size; j++ ){
+			if( attr_id == tcat->unique_tuples[i].attr_tuple[j] ){
+				check = true;
+				tcat->unique_tuples[i].deleted = true;
+				break;
+			}
+		}
+	}
+	return (check) ? 1 : -1;
 }
 
 /*

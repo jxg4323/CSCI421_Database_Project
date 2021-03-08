@@ -118,7 +118,7 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
  * attribute is marked as removed then don't write it to the disk.
  * Return 1 for success and -1 for failure.
  */
-int remove_attribute(table_catalog* t_cat, char *attr_name);
+int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name);
 
 /*
  * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
@@ -217,6 +217,12 @@ bool check_prim_key( table_catalog* tcat, int attr_id );
  * contained the attribute then return -1.
  */
 int check_foreign_relations( table_catalog* tcat, int attr_id, int *ret_arr );
+
+/*
+ * Mark any unique tuples with the provided attribute id as 
+ * deleted and return 1 with success, -1 otherwise.
+ */
+int delete_uniq_tup( table_catalog* tcat, int attr_id );
 
 /*
  * Write catalog information to disk and free pointer.
