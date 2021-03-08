@@ -45,22 +45,26 @@ int parse_ddl_statement( char * statement ){
   */
 int parse_create_statement( char * statement ){
  
+    // data is a 2d array of strings
+  	char *data[100];
+  	int i=0;
+
     char *end_str;
-    char *token = strtok_r(statement, "\n", &end_str);
+    char *token = strtok_r(statement, " ", &end_str);
 
     while (token != NULL)
     {
-        char *end_token;
         printf("a = %s\n", token);
-        char *token2 = strtok_r(token, " ", &end_token);
-        while (token2 != NULL)
-        {
-            printf("b = %s\n", token2);
-            token2 = strtok_r(NULL, " ", &end_token);
-        } 
-        token = strtok_r(NULL, "\n", &end_str);
+        data[i] = (char *)malloc(20);
+        strcpy(data[i], token);
+        i++;
+        token = strtok_r(NULL, " ", &end_str);
     }
 
+    for (i = 0; i < 100; ++i){
+        printf("%s\n", data[i]);
+        //free(data[i]);
+    }
     return 0;
 }
 
@@ -108,13 +112,58 @@ int parse_alter_statement( char * statement ){
 
     for (i = 0; i < sizeof(data); ++i){
         printf("%s\n", data[i]);
-        free(data[i]);
     }
 
 	//TODO:
 	// call the alter function with data as the parameter
 
     return 0;
+}
+
+char *str_replace(char *orig, char *rep, char *with) {
+    char *result; // the return string
+    char *ins;    // the next insert point
+    char *tmp;    // varies
+    int len_rep;  // length of rep (the string to remove)
+    int len_with; // length of with (the string to replace rep with)
+    int len_front; // distance between rep and end of last rep
+    int count;    // number of replacements
+
+    // sanity checks and initialization
+    if (!orig || !rep)
+        return NULL;
+    len_rep = strlen(rep);
+    if (len_rep == 0)
+        return NULL; // empty rep causes infinite loop during count
+    if (!with)
+        with = "";
+    len_with = strlen(with);
+
+    // count the number of replacements needed
+    ins = orig;
+    for (count = 0; tmp = strstr(ins, rep); ++count) {
+        ins = tmp + len_rep;
+    }
+
+    tmp = result = malloc(strlen(orig) + (len_with - len_rep) * count + 1);
+
+    if (!result)
+        return NULL;
+
+    // first time through the loop, all the variable are set correctly
+    // from here on,
+    //    tmp points to the end of the result string
+    //    ins points to the next occurrence of rep in orig
+    //    orig points to the remainder of orig after "end of rep"
+    while (count--) {
+        ins = strstr(orig, rep);
+        len_front = ins - orig;
+        tmp = strncpy(tmp, orig, len_front) + len_front;
+        tmp = strcpy(tmp, with) + len_with;
+        orig += len_front + len_rep; // move to next "end of rep"
+    }
+    strcpy(tmp, orig);
+    return result;
 }
 
 
