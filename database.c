@@ -1,5 +1,7 @@
+#include <string.h>
 #include "database1.h"
 #include "database.h"
+#include "tableschema.h"
 
 /*
  * This function will be used to execute SQL statements that
@@ -54,4 +56,119 @@ int main(int argc, char const *argv[])
 {
 	// 	
 	return 0;
+}
+
+
+int create_table( catalogs *cat, int token_count, char** tokens ){
+    int current = 2;
+    int validity = false;
+    validity = check_table_name(cat, tokens[current]);
+    if( validity == false ){ return validity; }
+    int table_index = cat->table_count;
+    manage_catalogs(cat, cat->table_count+1, true);
+    init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
+    current = 3;
+    while(current < token_count && validity != false){
+        if(strcmp(tokens[i], "primarykey") == 0){
+            current++;
+            char ** prims = malloc(sizeof(char *));
+            int prim_count = 0;
+            while(strcmp(tokens[current], "") != 0){
+                prim_count++;
+                prims = realloc(prim_count * sizeof(char *));
+                strcpy(prim[prim_count-1], tokens[current]);
+                current++;
+            }
+            int added = add_primary_key(&(cat->all_tables[table_index]), prims, prim_count);
+            if(added == -1){
+                validity = false;
+                cat->all_tables[table_index].deleted = 1;
+            }
+            current++;
+        } else if(strcmp(tokens[current], "unique") == 0){
+            current++;
+            char ** uniques = malloc(sizeof(char *));
+            int uniq_count = 0;
+            while(strcmp(tokens[current], "") != 0){
+                uniq_count++;
+                uniques = realloc(uniq_count * sizeof(char *));
+                strcpy(uniques[uniq_count-1], tokens[current]);
+                current++;
+            }
+            int added = add_unique_key(&(cat->all_tables[table_index]), uniques, uniq_count);
+            if(added == -1){
+                validity = false;
+                cat->all_tables[table_index].deleted = 1;
+            }
+            current++;
+        } else if(strcmp(tokens[current], "foreignkey") == 0){
+            current++;
+            int foreign_count = 1;
+            char **foreigns = malloc(sizeof(char *));
+            int key_count = 0;
+            while(strcmp(tokens[current], "references") != 0){
+                foreign_count++;
+                key_count++;
+                foreigns = realloc(foreign_count * sizeof(char *));
+                strcpy(foreigns[foreign_count-1], tokens[current]);
+                current++;
+            }
+            current++;
+            strcpy(foreigns[0], tokens[current]);
+            while(strcmp(tokens[current], "") != 0){
+                foreign_count++;
+                foreigns = realloc(foreign_count * sizeof(char *));
+                strcpy(foreigns[foreign_count-1], tokens[current]);
+                current++;
+            }
+            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
+            if(added == -1){
+                validity = false;
+                cat->all_tables[table_index].deleted = 1;
+            }
+            current++;
+        } else {
+            int name_idx = current++;
+            int type_idx = current++;
+            int constraints[3] = { 0 };
+            while(strcmp(tokens[current], "") != 0 && validity != false){
+                if(strcmp(tokens[current], "notnull") == 0){
+                    constraints[0] = 1;
+                    current++;
+                } else if(strcmp(tokens[current], "primarykey") == 0){
+                    constraints[1] = 1;
+                    current++;
+                } else if(strcmp(tokens[current], "unique") == 0){
+                    constraints[2] = 1;
+                    current++;
+                } else {
+                    cat->all_tables[table_index].deleted = 1;
+                    validity = false;
+                }
+            }
+            int added = -1;
+            if(validity != false) {
+                added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints);
+            }
+            if(added == -1){
+                cat->all_tables[table_index].deleted = 1;
+                validity = false;
+            }
+            current++;
+        }
+    }
+    if( validity == false ){
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+int drop_table_ddl( catalogs cat, char *name ){
+    int idx = get_catalog(cat, name);
+    if( idx == -1 ){ return idx; }
+    int success = drop_table( cat.all_tables[idx].id );
+    if( success == -1 ){ return success; }
+    cat.all_tables[idx].deleted = 1;
+    return 1;
 }
