@@ -77,9 +77,10 @@ int get_unique_count_no_deletes(table_catalog* tcat);    //   --> GOOD
 void pretty_print_catalogs(catalogs* logs);    //   --> GOOD
 void pretty_print_table(table_catalog* tcat);    //   --> GOOD
 void pretty_print_attributes( attr_info* attributes, int size );    //   --> GOOD
-void pretty_print_relations( foreign_data* relations, int size );    //   --> GOOD
-void pretty_print_unique_tuples( unique* tuples, int size );    //   --> GOOD
-void pretty_print_primary_tuples( int* prim_tup, int size );    //   --> GOOD
+void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size );    //   --> GOOD
+void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size );    //   --> GOOD
+void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size );    //   --> GOOD
+char *get_attr_name( catalogs* logs, char *table_name, int attr_id );    //   --> GOOD
 
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD

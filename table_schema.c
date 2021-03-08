@@ -200,7 +200,6 @@ int read_catalogs(char *db_loc, catalogs* logs){
 			a_name = (char *)malloc((name_size+1)*sizeof(char)); // TODO: add null character at end
 			memset(a_name, '\0', (name_size+1)*sizeof(char));
 			fread(a_name, sizeof(char), name_size, fp);
-			printf("Name: %s, strlen(a_name): %d, name_size: %d\n", a_name, strlen(a_name), name_size);
 			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, a_name);
 			free(a_name);
 		}
@@ -839,6 +838,14 @@ int get_unique_count_no_deletes(table_catalog* tcat){
 }
 
 /*
+ * Return the name of the attribute in the provided table.
+ */
+char *get_attr_name( catalogs* logs, char *table_name, int attr_id ){
+	table_catalog* temp = get_catalog_p( logs, table_name );
+	return temp->attributes[attr_id].name;
+}
+
+/*
  * Print Catalog information including deletions to stdout.
  */
 void pretty_print_catalogs(catalogs* logs){
@@ -861,70 +868,70 @@ void pretty_print_table(table_catalog* tcat){
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );
 	printf("Foreign Relations:\n");
 	// print relations
-	pretty_print_relations( tcat->relations, tcat->foreign_size );
+	pretty_print_relations( tcat, tcat->relations, tcat->foreign_size );
 	printf("Unique Tuples:\n");
 	// print unique tuples
-	pretty_print_unique_tuples( tcat->unique_tuples, tcat->unique_size );
+	pretty_print_unique_tuples( tcat, tcat->unique_tuples, tcat->unique_size );
 	// print primary key
-	pretty_print_primary_tuples( tcat->primary_tuple, tcat->primary_size );
+	pretty_print_primary_tuples( tcat, tcat->primary_tuple, tcat->primary_size );
 }
 
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
-		printf("\tName: '%s' --> type: %d, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, attributes[i].type, attributes[i].deleted ? 1 : 0,
+		printf("\tName: '%s' --> attr_id: %d, type: %d, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+			attributes[i].name, i, attributes[i].type, attributes[i].deleted ? 1 : 0,
 			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
 	}
 }
 
-void pretty_print_relations( foreign_data* relations, int size ){
+void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size ){
 	for( int i = 0; i<size; i++ ){
 		int tup_size = relations[i].tuple_size;
-		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d, Original Attributes: [",
+		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d,\n\t\tOriginal Attributes: [",
 				relations[i].name, relations[i].foreign_table_id, relations[i].deleted ? 1 : 0,
 				relations[i].tuple_size);
 		for( int j = 0; j<tup_size; j++ ){
 			if(j == tup_size-1){
-				printf("%d",relations[i].orig_attr_locs[j]);
+				printf("'%s'",tcat->attributes[relations[i].orig_attr_locs[j]].name);
 			}else{
-				printf("%d, ",relations[i].orig_attr_locs[j]);
+				printf("'%s', ",tcat->attributes[relations[i].orig_attr_locs[j]].name);
 			}
 		}
 		printf("], Foreign Atrributes: [");
 		for( int j = 0; j<tup_size; j++ ){
 			if(j == tup_size-1){
-				printf("%d",relations[i].for_attr_locs[j]);
+				printf("'%s'",tcat->attributes[relations[i].for_attr_locs[j]].name);
 			}else{
-				printf("%d, ",relations[i].for_attr_locs[j]);
+				printf("'%s', ",tcat->attributes[relations[i].for_attr_locs[j]].name);
 			}
 		}
 		printf("]\n");
 	}
 }
 
-void pretty_print_unique_tuples( unique* tuples, int size ){
+void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size ){
 	for(int i = 0; i<size; i++){
 		if( tuples[i].deleted ){continue;}
-		printf("\t(");
+		printf("\t( ");
 		for(int j = 0; j<tuples[i].tup_size; j++){
 			if(j == tuples[i].tup_size-1){
-				printf("%d", tuples[i].attr_tuple[j]);
+				printf("'%s'", tcat->attributes[tuples[i].attr_tuple[j]].name);
 			}else{
-				printf("%d,", tuples[i].attr_tuple[j]);
+				printf("'%s',", tcat->attributes[tuples[i].attr_tuple[j]].name);
 			}
 		}
-		printf(")\n");
+		printf(" )\n");
 	}
 }
 
-void pretty_print_primary_tuples( int* prim_tup, int size ){
-	printf("Primary Key: [");
+void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size ){
+	printf("Primary Key: [ ");
 	for( int i = 0; i<size; i++ ){
 		if( i == size-1){
-			printf("%d", prim_tup[i]);
+			printf("'%s'", tcat->attributes[prim_tup[i]].name);
 		}else{
-			printf("%d, ", prim_tup[i]);
+			printf("'%s', ", tcat->attributes[prim_tup[i]].name);
 		}
 	}
-	printf("]\n");
+	printf(" ]\n");
 }
