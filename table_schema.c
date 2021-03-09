@@ -647,6 +647,7 @@ int get_attr_loc(table_catalog *tcat, char *attr_name){
 bool check_table_name(catalogs *logs, char *tname){
 	bool in_use = false;
 	for( int i = 0; i<logs->table_count; i++ ){
+		if( logs->all_tables[i].deleted ){ continue; } // deleted tables don't count
 		if( strcmp(logs->all_tables[i].table_name, tname) == 0 ){ in_use = true; }
 	}
 	return in_use;

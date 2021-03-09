@@ -171,7 +171,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_primary_key(&(cat->all_tables[table_index]), prims, prim_count);
             if(added == -1){
                 valid = false;
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
             }
             current++;
             for( int i = 0; i < prim_count; i++ ){
@@ -193,7 +193,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_unique_key(&(cat->all_tables[table_index]), uniques, uniq_count);
             if(added == -1){
                 valid = false;
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
             }
             current++;
             for( int i = 0; i < uniq_count; i++ ){
@@ -227,7 +227,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
             if(added == -1){
                 valid = false;
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
             }
             current++;
             for( int i = 0; i < foreign_count; i++ ){
@@ -276,6 +276,6 @@ int drop_table_ddl( catalogs *cat, char *name ){
     if( idx == -1 ){ return idx; }
     int success = drop_table( cat->all_tables[idx].id );
     if( success == -1 ){ return success; }
-    cat->all_tables[idx].deleted = 1;
+    cat->all_tables[idx].deleted = true;
     return 1;
 }
