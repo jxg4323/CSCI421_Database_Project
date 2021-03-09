@@ -887,7 +887,7 @@ void pretty_print_attributes( attr_info* attributes, int size ){
 void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size ){
 	for( int i = 0; i<size; i++ ){
 		int tup_size = relations[i].tuple_size;
-		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d,\n\t\tOriginal Attributes: [",
+		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d,\n\t\tRelation: (",
 				relations[i].name, relations[i].foreign_table_id, relations[i].deleted ? 1 : 0,
 				relations[i].tuple_size);
 		for( int j = 0; j<tup_size; j++ ){
@@ -897,7 +897,7 @@ void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int s
 				printf("'%s', ",tcat->attributes[relations[i].orig_attr_locs[j]].name);
 			}
 		}
-		printf("], Foreign Atrributes: [");
+		printf(") --> (");
 		for( int j = 0; j<tup_size; j++ ){
 			if(j == tup_size-1){
 				printf("'%s'",tcat->attributes[relations[i].for_attr_locs[j]].name);
@@ -905,7 +905,7 @@ void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int s
 				printf("'%s', ",tcat->attributes[relations[i].for_attr_locs[j]].name);
 			}
 		}
-		printf("]\n");
+		printf(")\n");
 	}
 }
 
