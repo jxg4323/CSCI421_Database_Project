@@ -1,870 +1,999 @@
-/*
-Authors: Kelsey Dunn, Alex Frankel, James Green, Varnit Tewari
-Assigment: Phase 1
-Professor: Scott Johnson 
-*/
 #include "storagemanager.h"
-#include "storage.h"
-#include "pagedescriptor.h"
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+#include <time.h>
 
+//struct to hold metadata about a table
+struct table_data{
+    int table_num;
+    int table_size;
+	int tuples_per_page;
+    int num_attr;
+    int num_key_attr;
+    int num_pages;
+    int * attr_types;
+    int * key_indices;
+    int * pages;
+};
 
-/* 
- * create or restarts an instance of the database at the 
- * provided database location.
- * If restart is true this function will call the restart_database function.
- * If restart is false this function will call the new database function.
- * @param db_loc - the absolute path for the database.
- * @param page_size - the pages size for the database.
- * @param buffer_size - the maximum number of pages the 
- *                      database can hold in its page buffer at one time. 
- * @param restart - if true it will attempt to restart the database at the
- *                  provided database location. 
- * @return the result of either the restart_database or new_database function calls.
- */
+//struct to hold metadata/data about a page
+struct page_data{
+	int page_id;
+	int num_tuples;
+	int num_attr;
+	int tuples_per_page;
+	time_t timestamp;
+	union record_item ** data;
+};
+
+// array to hold all table metadata
+static struct table_data ** table_data = NULL;
+static int num_tables = 0;
+
+//metadata about database
+static int db_page_size;
+static int db_buffer_size;
+static char * db_db_loc;
+
+static int next_page = 0;
+
+//page buffer
+static struct page_data ** page_buffer = NULL;
+
+//static private functions
+
+/**
+ * Will read a page from hardware or the buffer.
+ * @param p_out - output param for the page
+ * @param page_id - the id of the page to read
+ * @param t_data - the metadata for the table this page belongs to
+ * @return the number of tuples in the page, -1 on error
+ **/
+static int read_page( struct page_data ** p_out,
+                      int page_id, 
+					  struct table_data * t_data);
+
+/**
+ * Will write a page to hardware.
+ * @param page - the data to write out
+ * @param page_id - the id of the page to read
+ * @param num_record - the number of records in the page
+ * @param tuples_per_page - the max number of records in the page (empty included)
+ * @param record_size - the number of attributes in a record
+ * @return the number of records written to the page; -1 on error
+ **/					  
+static int write_page( union record_item** page, 
+                       int page_id, int num_records, 
+					   int tuples_per_page, int record_size);
+
+/**
+  * gets the next avaiable table number. Allows for reuse of numbers.
+  * @return the next table number
+  **/  
+static int get_table_num();
+
+/**
+  * Will match two keys to see if they match
+  * @param key_attr_types - the types of the attributes that make up the key
+  * @param key - the key we are trying to match
+  * @param key_values - the key we are trying to match to
+  * @param key_indices_size - the size of the keys
+  * @return 1 if they match; 0 otherwise
+  **/
+static int key_match(int * key_attr_types, union record_item * key, 
+                     union record_item * key_values, int key_indices_size);
+
+/**
+  * Will create an empty page for the provided table
+  * @param t_data - the metadat of the table to create the page for
+  * @return the new page metadata/data
+**/  
+static struct page_data * create_new_page(struct table_data * t_data);
+
+/**
+  * Creates a generic table
+  * @param table - the output param to return the created table
+  * @param num_records - the max number of records this table can hold
+  * @param num_attr - the number of attributes in a reocrd
+  **/
+static void create_empty_table(union record_item*** table, 
+                               int num_records, int num_attr);
+
+/**
+  * This will compare records of the same table by key ordering
+  * @param t_data - the table metadata that the records belong to
+  * @param r1 - the first record to compare
+  * @param r2 - the second record to compare
+  * @return < 0 if record 1 comes before record 2
+  *         > 0 if record 1 comes after record 2
+  *         0 otherwise
+  **/
+static int compare_record(struct table_data * t_data, 
+                          union record_item * r1, union record_item * r2);
+
+/**
+  * Will attempt to insert the provided record into the requested page.
+  * Ordering will be based on key; duplicate keys are rejected.
+  * If there is room in the page it will place the record in the proper ordering.
+  * If there is not room in the page, it will split the page.
+  * @param page_id - the if of the page to insert the record into
+  * @param record - the record to insert into the page
+  * @param t_data - the tabkle metadata for the page
+  * @return 0 on success; -1 on failure
+  **/
+static int insert_into_page(int page_id, union record_item * record, 
+                            struct table_data * t_data);
+
+/**
+  * Will delete the ruquested page
+  * @param page_id - the iod of the page to delete
+  **/  
+static void delete_page(int page_id);
+
+/**
+  * Will write the metadata to hardware that is needed to restart the database
+  * @return 0 on success; -1 on failure
+  **/
+static int write_metadata();
+
+/**
+  * Will read the metadata from hardware that is needed to restart the database
+  * @return 0 on success; -1 on failure
+  **/
+static int read_metadata();
+
+/**
+  * Will write table metadata to hardware that is needed to restart the database
+  **/
+static void write_table_metadata(struct table_data * t_data, FILE * meta_file);
+
+/**
+  * Will read table metadata from hardware that is needed to restart the database
+  **/
+static void read_table_metadata(FILE * meta_file);
+
+// header functions
 int create_database( char * db_loc, int page_size, int buffer_size, bool restart){
-	allocate_db_data(page_size, buffer_size, db_loc);
-	table_l = (lookup_table *)malloc(sizeof(lookup_table));
-	init_page_buffer();
-	allocate_all_schemas();
-	allocate_page_manager(0, 0, false);
-	if(restart){
-		return restart_database(db_loc);
-	}else{
-		int com_len = strlen(db_loc) + 7;
-		char *com = (char *)malloc(com_len*sizeof(char));
-		strcat(com,"rm -r ");
-		strcat(com, db_loc);
-		strcat(com, "*");
-		system(com);
-		free(com);
-		return new_database(db_loc, page_size, buffer_size);
-	}
+	if(restart)
+		return restart_database( db_loc );
+	else
+		return new_database( db_loc, page_size, buffer_size );
 }
 
-/* 
- * This function will try to restart the database at the provided database location.
- * @param db_loc - the absolute path for the database to restart.
- * @return 0 if the database is restarted successfully, otherwise -1;
- */
 int restart_database( char * db_loc ){
-	int db_result = 0;
-	int lookup_result = 0;
-	int schema_result = 0;
-	int pmanage_result = 0;
-	db_result = get_db_config(db_loc, db_data);  
-	lookup_result = read_lookup_file(db_loc, table_l);
-	schema_result = get_all_schemas(db_loc);
-	pmanage_result = read_page_manager(db_loc, page_lookup);
-	if(db_result == -1 || lookup_result == -1 || schema_result == -1 || pmanage_result == -1){
+	db_db_loc = malloc(strlen(db_loc) + 1);
+	strcpy(db_db_loc, db_loc);
+	if(read_metadata() != 0){
+		fprintf(stderr, "Failed to restart database\n");
 		return -1;
-	}else{
-		return 0;
 	}
+	printf("Here1\n");
+	page_buffer = malloc(sizeof(struct page_data *) * db_buffer_size);
+	for(int i = 0; i < db_buffer_size; i++){
+		page_buffer[i] = NULL;
+	}
+	return 0;
 }
 
-/* 
- * create an instance of the database at the provided database location.
- * @param db_loc - the absolute path for the database.
- * @param page_size - the pages size for the database.
- * @param buffer_size - the maximum number of pages the 
- *                      database can hold in its page buffer at one time.
- * @return 0 if the database is started successfully, otherwise -1;
- */
 int new_database( char * db_loc, int page_size, int buffer_size ){
-	// need to store database info into file --> the allocate sets new database
-	FILE *dbFile;
-	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
-	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
-	memset(config_file, 0, db_loc_len*sizeof(char));
-	strcat(config_file, db_loc);
-	strcat(config_file, DATABASE_CONFIG_FILE);
-
-	dbFile = fopen(config_file, "wb"); 
-	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: new_database invalid database config file location %s\n",config_file);
-    	free( db_data );
-    	return -1;
-    }
-    fwrite(&(page_size), sizeof(int), 1, dbFile);
-    fwrite(&(buffer_size), sizeof(int), 1, dbFile);
-    fwrite(db_loc, sizeof(char), db_loc_len, dbFile);
-    initialize_lookup_table( -1, table_l );
-    init_page_manager( 0, 0, page_lookup );
-    db_data->page_size = page_size;
-    db_data->buffer_size = buffer_size;
-    strcpy(db_data->db_location, db_loc);
-
-    free(config_file);
-	fclose(dbFile);
+	db_page_size = page_size;
+	db_buffer_size = buffer_size;
+	db_db_loc = malloc(strlen(db_loc) + 1);
+	strcpy(db_db_loc, db_loc);
+	page_buffer = malloc(sizeof(struct page_data *) * buffer_size);
+	for(int i = 0; i < buffer_size; i++){
+		page_buffer[i] = NULL;
+	}
 	return 0;
 }
 
-/*
- * Safely shutdown storage manager. 
- */
-int terminate_database(){
-	// confirm database config file has been writen
-	// write buffer to file
-	write_db_config( db_data->db_location );
-	// get lookup table & confirm written
-	write_lookup_table( table_l, db_data->db_location );
-	// Write tablemetadata file
-	write_all_schemas( db_data->db_location );
-	// Write page manager file
-	write_page_manager( db_data->db_location, page_lookup );
-	// free used memory and return
-	free_lookup_table( table_l );
-	free_config( db_data );
-	free_table_schemas( all_table_schemas );
-}
-
-/*
- * Allocate local db_config data for use for storagemanager.c
- */
-int allocate_db_data(int page_size, int buf_size, char *db_loc){
-	db_data = (db_config *)malloc(sizeof(db_config));
-	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
-	db_data->page_size = page_size;
-    db_data->buffer_size = buf_size;
-    db_data->db_location = (char *)malloc(db_loc_len*sizeof(char));
-	memset(db_data->db_location, 0, db_loc_len*sizeof(char));
-}
-
-/*
- * Pretty print the database config file into text.
- */
-void pretty_print_db_config( db_config *config ){
-    printf("Page Size: %d, Buffer Size: %d, Database Path: %s\n", config->page_size, config->buffer_size, config->db_location);
-}
-
-/* 
- * Allocate memory for the config structure before calling.
- * Get database config info and page buffer and place into volatile memory.
- */
-int get_db_config( char * db_loc, db_config* config ){
-	FILE *dbFile;
-	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
-	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
-
-	memset(config_file, 0, db_loc_len*sizeof(char));
-	strcat(config_file, db_loc);
-	strcat(config_file, DATABASE_CONFIG_FILE);
-
-	dbFile = fopen(config_file, "rb"); 
-	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: get_db_config invalid database config file %s\n",db_loc);
-    	return -1;
-    }
-    fread(&(config->page_size),sizeof(int),1,dbFile);
-    fread(&(config->buffer_size),sizeof(int),1,dbFile);
-    //allocate memory for buffer and file location
-    config->db_location = (char *)malloc(db_loc_len*sizeof(char));
-    fread(config->db_location, sizeof(char), db_loc_len, dbFile);
-
-    free( config_file );
-    fclose(dbFile);
-    return 0;
-}
-
-/*
- * Update the buffer in database config.
- * Return 0 with success and -1 for failure.
- */
-int write_db_config( char * db_loc ){
-	// buffer size should NEVER change
-	FILE *dbFile;
-	int result;
-	int db_loc_len = strlen(db_loc) + DATABASE_FILE_NAME_LEN;
-
-	char * config_file = (char *)malloc(db_loc_len*sizeof(char));
-	memset(config_file, 0, db_loc_len*sizeof(char));
-	strcat(config_file, db_loc);
-	strcat(config_file, DATABASE_CONFIG_FILE);
-
-	dbFile = fopen(config_file, "wb"); 
-	if(dbFile == NULL){
-    	fprintf(stderr,"ERROR: write_db_config invalid database config file %s\n",db_loc);
-    	return -1;
-    }
-    fwrite(&(db_data->page_size), sizeof(int), 1, dbFile);
-    fwrite(&(db_data->buffer_size), sizeof(int), 1, dbFile);
-    fwrite(db_data->db_location, sizeof(char), db_loc_len, dbFile);
-
-    free( config_file );
-	fclose(dbFile);
-	return 0;
-}
-
-/*
- * Free database config volatile memory.
- */
-void free_config( db_config *config ){
-	free(config->db_location);
-	free(config);
-}
-
-
-/*
- * Allocate memory for local table_schema_array WITHOUT allocating
- * memory for the array of structures.
- */
-void allocate_all_schemas(){
-	all_table_schemas = (table_schema_array *)malloc(sizeof(table_schema_array));
-	all_table_schemas->last_made_id = -1;
-	all_table_schemas->table_count = -1;
-}
-
-/*
- * Allocate structure array for the table schemas
- */
-void manage_all_schema_array(int count, bool increase_size){
-	if( increase_size ){ // if True increase the size of the table_schemas
-		all_table_schemas->tables = realloc(all_table_schemas->tables, count*sizeof(table_data *));
-	}else{
-		all_table_schemas->tables = malloc(count*sizeof(table_data *));
-	}
-}
-
-/*
- * Initialize the given structure with the correct id, type array length, and
- * key indices array length. Also, allocate the memory required for the arrays.
- */
-void init_table_schema(int t_id, int types_len, int key_len, struct table_data **t_schema, int table_index){
-    t_schema[table_index] = malloc(sizeof(table_data));
-	t_schema[table_index]->id = t_id;
-	t_schema[table_index]->data_types_size = types_len;
-	t_schema[table_index]->key_indices_size = key_len;
-	t_schema[table_index]->data_types = malloc(types_len*sizeof(int));
-	t_schema[table_index]->key_indices = malloc(key_len*sizeof(int));
-}
-
-/*
- * Free the table schema array volatile memory
- */
-void free_table_schemas( table_schema_array* schemas ){
-	for( int i = 0; i < schemas->table_count; i++ ){
-		free( schemas->tables[i]->data_types );
-		free( schemas->tables[i]->key_indices );
-		free( schemas->tables[i] );
-	}
-	free( schemas->tables );
-}
-
-/*
- * Pretty print the table schemas
- */
-void pretty_print_table_schemas( table_schema_array *schemas ){
-	printf(" Table Schemas \n");
-	for(int i = 0; i < schemas->table_count; i++){
-		printf("Table ID: %d Data types: [ ", schemas->tables[i]->id);
-		for( int j = 0; j < schemas->tables[i]->data_types_size; j++){
-			if( j == schemas->tables[i]->data_types_size-1 ){
-				printf("%d ", schemas->tables[i]->data_types[j]);
-			}else{
-				printf("%d, ", schemas->tables[i]->data_types[j]);
-			}
-		}
-		printf(" ], Key Indices: [ ");
-		for( int j = 0; j < schemas->tables[i]->key_indices_size; j++){
-			if( j == schemas->tables[i]->key_indices_size-1 ){
-				printf("%d ", schemas->tables[i]->key_indices[j]);
-			}else{
-				printf("%d, ", schemas->tables[i]->key_indices[j]);
-			}
-		}
-		printf(" ]\n");
-	}
-}
-
-/*
- * Loop through the file allocating the volatile memory for the table schemas.
- * Return 0 with success and -1 for failure.
- */
-int get_all_schemas(char * db_loc){
-	int table_indx = 0;
-	// Read the metadata file and store in volatile memory
-	FILE *schema_fp;
-	int file_len = strlen(db_loc) + TABLE_METADATA_FILE_LEN;
-	char *schema_file = (char *)malloc(file_len*sizeof(char));
-
-	memset(schema_file, 0, file_len*sizeof(char));
-	strcat(schema_file, db_loc);
-	strcat(schema_file, TABLE_METADATA_FILE);
-
-	schema_fp = fopen(schema_file, "rb");
-	if( schema_fp == NULL){
-		fprintf(stderr, "ERROR: get_all_schemas invalid table metadata file %s\n", schema_file);
-		free(schema_file);
-		return -1;
-	}
-	fread(&(all_table_schemas->last_made_id),sizeof(int),1,schema_fp);
-	fread(&(all_table_schemas->table_count), sizeof(int),1,schema_fp);
-	manage_all_schema_array(all_table_schemas->table_count, false);
-	while( 1 ){
-		// cast first part of the line to the lookup_info struct to get bin & table info
-		int t_id = -1;
-		int types_len = -1;
-		int key_len = -1;
-		fread(&t_id,sizeof(int),1,schema_fp);
-		fread(&types_len,sizeof(int),1,schema_fp);
-		fread(&key_len,sizeof(int),1,schema_fp);
-		// init structure for table schema
-		init_table_schema(t_id, types_len, key_len, all_table_schemas->tables, table_indx);
-		fread((all_table_schemas->tables[table_indx])->data_types,sizeof(int),types_len,schema_fp);
-		fread((all_table_schemas->tables[table_indx])->key_indices,sizeof(int),key_len,schema_fp);
-		// next line
-		if(feof(schema_fp) || table_indx == (all_table_schemas->table_count-1)){ //read until end of file character or there aren't any more tables
-			break;
-		}
-		table_indx++;
-	}
-	free( schema_file );
-	fclose( schema_fp );
-	return 0;
-}
-
-/*
- * Loop through the table schemas writing them to the disk.
- * Return 0 with success and -1 for failure.
- */
-int write_all_schemas(char * db_loc){
-	// Loop through all the table metadata structures and write the contents to a given file
-	FILE *wFile;
-	int file_len = strlen(db_loc) + TABLE_METADATA_FILE_LEN;
-	char *schema_file = (char *)malloc(file_len*sizeof(char));
-
-	memset(schema_file, 0, file_len*sizeof(char));
-	strcat(schema_file, db_loc);
-	strcat(schema_file, TABLE_METADATA_FILE);
-
-	wFile = fopen(schema_file, "wb");
-	if( wFile == NULL){
-		fprintf(stderr, "ERROR: write_all_schemas invalid table metadata file %s\n", schema_file);
-		free(schema_file);
-		return -1;
-	}
-	fwrite(&(all_table_schemas->last_made_id),sizeof(int),1,wFile);
-	fwrite(&(all_table_schemas->table_count),sizeof(int),1,wFile);
-	for( int i = 0; i < all_table_schemas->table_count; i++){
-		fwrite(&(all_table_schemas->tables[i]->id),sizeof(int),1,wFile);
-		fwrite(&(all_table_schemas->tables[i]->data_types_size),sizeof(int),1,wFile);
-		fwrite(&(all_table_schemas->tables[i]->key_indices_size),sizeof(int),1,wFile);
-		fwrite(all_table_schemas->tables[i]->data_types,sizeof(int),all_table_schemas->tables[i]->data_types_size*sizeof(int),wFile);
-		fwrite(all_table_schemas->tables[i]->key_indices,sizeof(int),all_table_schemas->tables[i]->key_indices_size*sizeof(int),wFile);
-	}
-	free( schema_file );
-	fclose( wFile );
-	return 0;
-}
-
-/*
- * Look for table schema information based on given table.
- * Return table_data pointer for schema data if the table 
- * exists o.w. return NULL.
- */
-table_data* get_table_schema( int table_id ){
-	for(int i = 0; i < all_table_schemas->table_count; i++){
-		if ( all_table_schemas->tables[i]->id == table_id ){
-			return all_table_schemas->tables[i];
-		}
-	}
-	return NULL;
-}
-
-/*
- * This function will drop the table with the provided id
- * from the database. This will remove all data as well as information
- * about the table.
- * @param table_id - the id of the table to drop
- * @return 0 if table succesfully dropped, -1 otherwise.
- */
-int drop_table( int table_id ){
-	// delete all records for the table
-    int cleared = 0 ;
-    if(cleared == -1){ return -1; }
-	// delete the table struct from the metadata array
-    int table_count = all_table_schemas->table_count;
-    int offset = 0;
-    table_data **table_array = malloc(sizeof(table_data *) * (table_count-1));
-    for(int i = 0; i < table_count; i++){
-        if(table_id != all_table_schemas->tables[i]->id){
-            table_array[i-offset] = malloc(sizeof(table_data));
-            table_array[i-offset]->id = all_table_schemas->tables[i]->id;
-            table_array[i-offset]->data_types_size = all_table_schemas->tables[i]->data_types_size;
-            table_array[i-offset]->key_indices_size = all_table_schemas->tables[i]->key_indices_size;
-            table_array[i-offset]->data_types = malloc(sizeof(int) * table_array[i-offset]->data_types_size);
-            for(int j = 0; j < table_array[i-offset]->data_types_size; j++){
-                table_array[i-offset]->data_types[j] = all_table_schemas->tables[i]->data_types[j];
-            }
-            table_array[i-offset]->key_indices = malloc(sizeof(int) * table_array[i-offset]->key_indices_size);
-            for(int j = 0; j < table_array[i-offset]->key_indices_size; j++){
-                table_array[i-offset]->key_indices[j] = all_table_schemas->tables[i]->key_indices[j];
-            }
-        } else {
-            offset = 1;
-        }
-        free(all_table_schemas->tables[i]->key_indices);
-        free(all_table_schemas->tables[i]->data_types);
-        free(all_table_schemas->tables[i]);
-    }
-    all_table_schemas->table_count = table_count - 1;
-    free(all_table_schemas->tables);
-    all_table_schemas->tables = table_array;
-    // delete the table_info from the lookup table
-    table_l = delete_table_info(table_l, table_id);
-    return 0;
-}
-
-/*
- * This function will clear the table with the provided id
- * from the database. This will remove all data but not the table.
- * @param table_id - the id of the table to clear
- * @return 0 if table succesfully cleared, -1 otherwise.
- */
-int clear_table( int table_id ){
-    // In table metadata structure array remove the data types and key indices for given id
-    // delete all of the records for the table
-    if(get_table_info(table_l, table_id) == -1){ return -1; }
-
-/*    int key_indices_size = 0;
-    for(int i = 0; i < all_table_schemas->table_count; i++){
-        if(table_id = all_table_schemas->tables[i].id){
-            key_indices_size = all_table_schemas->tables[i].key_indices_size;
-        }
-    }
-
-
-    union record_item *key_values = malloc(sizeof(union record_item) * key_indices_size);
-    union record_item **records;
-    int num_records = get_records(table_id, &records);
-    if (num_records > -1) {
-        for (int i = 0; i < num_records; i++) {
-            for(int j = 0; j < key_indices_size; j++){
-                key_values[j] = records[i][j];
-            }
-            remove_record(table_id, key_values);
-            free(&(records[i]));
-        }
-    } else {
-        free(records);
-        free(key_values);
+int get_records( int table_id, union record_item *** table ){
+    if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
         return -1;
     }
-    free(records);
-    free(key_values);*/
-    // clear the table bin information from lookup table
-    clear_table_bin( table_l, table_id );
-    return 0;
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    if(t_data->table_size == 0){
+        *table = NULL;
+        return 0;
+    }
+
+	fflush(NULL);
+	*table = malloc(sizeof(union record_item**) * t_data->table_size);
+	
+    int index = 0;
+    for(int i = 0; i < t_data->num_pages; i++){
+        struct page_data * p_data = NULL;
+        int num_records = read_page(&p_data, t_data->pages[i], t_data);
+        
+        if(num_records == -1){
+            fprintf(stderr, "Error reading page: %d\n", i);
+            return -1;
+        }
+        
+        for(int j = 0; j < num_records; j++){
+            (*table)[index] = malloc(sizeof(union record_item) * t_data->num_attr);
+            memcpy((*table)[index], p_data->data[j], 
+			       sizeof(union record_item) * t_data->num_attr);
+			index++;
+        }
+    }
+	
+	return t_data->table_size;
 }
 
-/*
- * This will add a table to the database with the provided data types and
- * primary key.
- * @param data_types - an integer array representing the data types stored
-                       in a tupler in the table.
- * @param key_indices - an interger array representing the indicies that
-                        make up the parimary key. The order of the indicies
-						in this array deternmine the ordering of the attributes
-						in the primary key.
- * @param data_types_size - the size of the data types array
- * @param key_indices_size - the size of the key indicies array.
- * @return the id of the table created, -1 upon error.
- */
-int add_table( int * data_types, int * key_indices, int data_types_size, int key_indices_size ){
-	//TODO: reacllocate the table_schema_array->tables array to accomodate the new table
-	int end_indx = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->table_count;
-   	int new_id = (all_table_schemas->last_made_id == -1) ? 0 : all_table_schemas->last_made_id+1;
-    table_data *table = get_table_schema(new_id);
-    if(table != NULL ){ return -1; }
-   	// reallocate memory for the new meta infomation struct for the table and append it to the metadata file
-   	manage_all_schema_array( (all_table_schemas->table_count+1),true );
-   	init_table_schema( new_id, data_types_size, key_indices_size, all_table_schemas->tables, end_indx );
-   	memcpy( all_table_schemas->tables[end_indx]->data_types, data_types, data_types_size*sizeof(int) );
-   	memcpy( all_table_schemas->tables[end_indx]->key_indices, key_indices, key_indices_size*sizeof(int) );
-   	all_table_schemas->last_made_id = new_id;
-   	all_table_schemas->table_count = end_indx + 1;
-   	add_table_info(table_l, new_id);
-    return new_id;
-}
-
-void allocate_page_manager(int l_id, int page_count, bool reset){
-	if(reset){
-		page_lookup = (page_manager *)malloc(sizeof(page_manager));
-		init_page_manager(page_count, l_id, page_lookup);
-	}else{
-		page_lookup = (page_manager *)malloc(sizeof(page_manager));
-	}
-}
-
-/*
- * Function assumes the table 2d array pointer allocated the 
- * memory to match the number of data types in the table.
- */
-int get_records( int table_id, union record_item *** table ){
-	table_pages * table_info = get_table_struct( table_l, table_id );
-	table_data *table_schema = get_table_schema( table_id );
-	int total = 0;
-	// loop through table record locations and compare keys
-	for( int i = 0; i < table_info->bin_size; i++ ){
-		int p_id = table_info->byte_info[i][0];
-		int r_size = table_schema->data_types_size;
-		int p_loc = request_page_in_buffer( p_id );
-		page_desc* p_info = get_page_desc( p_id,page_lookup );
-		for(int j = 0; j < p_info->num_records; j++){
-			memcpy( table[total], &(page_buffer->pages[p_loc].page_records[j]), r_size*sizeof(r_item));
-			total++;
-		}
-	}
-	return total;
-}
-
-int get_page( int page_id, union record_item *** page ){
-	int buf_loc = request_page_in_buffer( page_id );
-	page_desc *info = get_page_desc( page_id,page_lookup );
-
-	page = &(page_buffer->pages[buf_loc].page_records);
-
-	return info->num_records;
-}
-
-/*
- * Compare the given records based on the data type of the record.
- * Return true if records are equal and false otherwise.
- */
-bool compare_records( int data_type, r_item left, r_item right ){
-	switch(data_type){
-		case 0: // int
-			return (left.i == right.i) ? true : false; 
-			break;
-		case 1: // double
-			return (left.d == right.d) ? true : false; 
-			break;
-		case 2: // bool
-			return (left.b == right.b) ? true : false; 
-			break;
-		case 3: // char
-			return (left.c == right.c) ? true : false; 
-			break;
-		case 4: // varchar
-			return (left.v == right.v) ? true : false; 
-			break;
-	}
-}
-
-
-/*
- * Loop through records in pages that correspond to the given table
- * and when the record in the page matches all the key values 
- * copy the values of the record into the data parameter and return 0.
- */
-int get_record( int table_id, union record_item * key_values, union record_item ** data ){
-	table_pages *table_info = get_table_struct( table_l, table_id );
-	table_data *table_schema = get_table_schema( table_id );
-	// loop through table record locations and compare keys
-	for( int i = 0; i < table_info->bin_size; i++ ){
-		int p_id = table_info->byte_info[i][0];
-		int r_size = table_schema->data_types_size;
-		int p_loc = request_page_in_buffer( p_id );
-		int total = 0;
-		for( int j = 0; j < table_schema->key_indices_size; j++){
-			int key_loc = table_schema->key_indices[j];
-			if( compare_records( table_schema->data_types[key_loc], key_values[j], page_buffer->pages[p_loc].page_records[i][key_loc] ) ){
-				total++;
-			}
-		}
-		if( total == table_schema->key_indices_size-1 ){ // all keys match
-			data = &(page_buffer->pages[p_loc].page_records[i]);
-			return 0;
-		}
-	}
-	return -1;
+int get_record( int table_id, 
+                union record_item * key_values, 
+                union record_item ** data ){
+    if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    if(t_data->table_size == 0){
+        *data = NULL;
+        return -1;
+    }
+    *data = NULL;
+    
+    for(int i = 0; i < t_data->num_pages; i++){
+        struct page_data * p_data = NULL;
+        int num_records = read_page(&p_data, t_data->pages[i], t_data);
+        
+        if(num_records == -1){
+            fprintf(stderr, "Error reading page: %d\n", i);
+            return -1;
+        }
+        
+        for(int j = 0; j < num_records; j++){
+            union record_item * temp = malloc(sizeof(union record_item) * t_data->num_attr);
+            for(int k = 0; k < t_data->num_key_attr; k++){
+				int index = t_data->key_indices[k];
+                temp[index] = key_values[k];
+            }
+            if(!compare_record(t_data, temp, p_data->data[j])){
+                (*data) = malloc(sizeof(union record_item) * t_data->num_attr);
+                memcpy(*data, p_data->data[j], 
+				       sizeof(union record_item) * t_data->num_attr);
+                return 0;
+            }
+        }
+    }
+    fprintf(stderr, "No such record");
+    return -1;
 }
 
 int insert_record( int table_id, union record_item * record ){
-	table_pages *table_info = get_table_struct( table_l, table_id );
-	table_data *table_schema = get_table_schema( table_id );
-	int r_size = table_schema->data_types_size;
-	int p_id = 0;
-	// loop through page buffer and check if pages is full
-	for(int i = 0; i<page_buffer->num_of_pages; i++){
-		p_id = page_buffer->pages[i].page_id;
-		page_desc *info = get_page_desc( p_id,page_lookup );
-		int status = is_page_full( info,db_data->page_size );
-		// check if there is enough room in the page for the record
-		if( status >= r_size ){ 
-			// add record to page
-			int loc = info->free_loc;
-			memcpy( &(page_buffer->pages[i].page_records[loc]), record, r_size*sizeof(r_item));
-			// update page manager
-			update_page( p_id,loc++,r_size,page_lookup );
-			return 0;
+	if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+	
+	if(t_data->table_size == 0){
+		struct page_data * p_data = create_new_page(t_data);
+		memcpy(p_data->data[0], record, 
+		       sizeof(union record_item)*t_data->num_attr);
+		
+		int page_num = p_data->page_id;
+		p_data->num_tuples++;
+		t_data->pages = malloc(sizeof(int));
+		t_data->pages[0] = page_num;
+		t_data->num_pages++;
+		t_data->table_size++;
+		
+		return 0;
+    }
+	
+	for(int i = 0; i < t_data->num_pages; i++){
+		struct page_data * p_data = NULL;
+        int num_records = read_page(&p_data, t_data->pages[i], t_data);
+		
+		if(num_records < 0){
+			fprintf(stderr, "Error reading page\n");
+			return -1;
+		}
+		
+		int rs = compare_record(t_data, record, p_data->data[num_records-1]);
+		if(rs < 0){
+			return insert_into_page(t_data->pages[i], record, t_data);
+		}	
+	}
+	
+	return insert_into_page(t_data->pages[t_data->num_pages-1], record, t_data);
+}
+	
+
+int update_record( int table_id, union record_item * record ){
+    if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    if(t_data->table_size == 0){
+        return -1;
+    }
+    
+    for(int i = 0; i < t_data->num_pages; i++){
+        struct page_data * p_data = NULL;
+        int num_records = read_page(&p_data, t_data->pages[i], t_data);
+        
+        if(num_records == -1){
+            fprintf(stderr, "Error reading page: %d\n", i);
+            return -1;
+        }
+        
+        for(int j = 0; j < num_records; j++){
+            if(!compare_record(t_data, record, p_data->data[j])){
+                memcpy(p_data->data[j], 
+				       record, sizeof(union record_item) * t_data->num_attr);
+                return 1;
+            }
+        }
+    }
+    fprintf(stderr, "No such record");
+    return 0;
+}
+    
+int remove_record( int table_id, union record_item * key_values ){
+    if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    if(t_data->table_size == 0){
+        return -1;
+    }
+    
+    for(int i = 0; i < t_data->num_pages; i++){
+        struct page_data * p_data = NULL;
+        int num_records = read_page(&p_data, t_data->pages[i], t_data);
+        
+        if(num_records == -1){
+            fprintf(stderr, "Error reading page: %d\n", i);
+            return -1;
+        }
+        
+        for(int j = 0; j < num_records; j++){
+            union record_item * key = malloc(sizeof(union record_item) * t_data->num_key_attr);
+            int * key_attr_types = malloc(sizeof(int) * t_data->num_key_attr);
+            for(int k = 0; k < t_data->num_key_attr; k++){
+                key[k] = p_data->data[j][t_data->key_indices[k]];
+                key_attr_types[k] = t_data->attr_types[t_data->key_indices[k]];
+            }
+            if(key_match(key_attr_types, key, key_values, t_data->num_key_attr)){
+				if(num_records == 1){
+					delete_page(t_data->pages[i]);
+					for(int k = i; k < t_data->num_pages; k++){
+						t_data->pages[k] = t_data->pages[k+1];
+					}
+					t_data->pages = realloc(t_data->pages, t_data->num_pages);
+					t_data->num_pages--;
+				}
+				else{
+					for(int k = j; k < t_data->tuples_per_page-1; k++){
+						memcpy(p_data->data[k], p_data->data[k+1], 
+						       sizeof(union record_item) * t_data->num_attr);
+					}
+				}
+				t_data->table_size--;
+                return 0;
+            }
+        }
+    }
+    fprintf(stderr, "No such record");
+    return -1;
+}
+
+int add_table( int * data_types, int * key_indices, 
+               int data_types_size, int key_indices_size ){
+    int table_num = get_table_num();
+    
+    struct table_data * t_data = malloc(sizeof(struct table_data));
+    t_data->table_num = table_num;
+    t_data->table_size = 0;
+	t_data->tuples_per_page = db_page_size/(data_types_size*sizeof(union record_item));
+    t_data->num_attr = data_types_size;
+    t_data->num_key_attr = key_indices_size;
+    t_data->num_pages = 0;
+    t_data->attr_types = malloc(sizeof(int)*data_types_size);
+    memcpy(t_data->attr_types, data_types, data_types_size * sizeof(int));
+    t_data->key_indices = malloc(sizeof(int)*key_indices_size);
+    memcpy(t_data->key_indices, key_indices, key_indices_size * sizeof(int));
+    t_data->pages = NULL;
+    
+    table_data[table_num] = t_data;
+    return table_num;
+}
+
+int drop_table( int table_id ){
+	if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+	int rs = clear_table(table_id);
+	if(rs != 0){
+		fprintf(stderr, "Failed to drop table\n");
+		return -1;
+	}
+	table_data[table_id] = NULL;
+	return 0;
+}
+
+int clear_table( int table_id ){
+	if(table_id >= num_tables){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+    struct table_data * t_data = table_data[table_id];
+    if(t_data == NULL){
+        fprintf(stderr, "Invalid table number: %d\n", table_id);
+        return -1;
+    }
+	
+	if(purge_buffer() != 0){
+		return -1;
+	}
+	
+	for(int i = 0; i < t_data->num_pages; i++){
+		int page_id = t_data->pages[i];
+		int length = snprintf(NULL, 0, "%s%d", db_db_loc, page_id);
+		char * page_loc = malloc(length+1);
+		snprintf(page_loc, length+1, "%s%d", db_db_loc, page_id);
+		int rs = remove(page_loc);
+		if(rs == -1){
+			fprintf(stderr, "Error removing page %d\n", t_data->pages[i]);
+			return -1;
 		}
 	}
-	// loop through other page_ids
-	bool inserted = false;
-	while( !inserted ){
-		p_id++;
-		if( p_id == page_lookup->last_id ){ // page hasn't been seen before --> create a new page
-			page_info *tmp = (page_info *)malloc(sizeof(page_info));
-			init_page_layout( p_id, 0, tmp );
-			write_page( tmp );
-			add_page( p_id, page_lookup );	
-			add_table_info( table_l,table_id );
-			update_lookup_table( table_l,table_id,p_id,r_size );
-			free( tmp );
+	
+	t_data->pages = NULL;
+	t_data->num_pages = 0;
+	t_data->table_size = 0;
+	
+	return 0;
+}
+
+int purge_buffer(){
+	for(int i = 0; i < db_buffer_size; i++){
+		struct page_data * page = page_buffer[i];
+		if(page != NULL){
+			if(write_page(page->data, page->page_id, 
+			              page->num_tuples, 
+						  page->tuples_per_page, page->num_attr) < 0){
+				fprintf(stderr, "Failed to write page from buffer.\n");
+				return -1;
+			}
+			page_buffer[i] = NULL;
 		}
-		if( check_page_table( table_info, p_id ) == 0){
-			int page_loc = request_page_in_buffer( p_id );
-			page_desc *info = get_page_desc( p_id,page_lookup );
-			int status = is_page_full( info,db_data->page_size );
-			// check if there is enough room in the page for the record
-			if( status >= r_size ){ 
-				// add record to page
-				int loc = info->free_loc;
-				memcpy( &(page_buffer->pages[page_loc].page_records[loc]), record, r_size*sizeof(r_item));
-				// update page manager
-				update_page( p_id,loc++,r_size,page_lookup );
-				inserted = true;
+	}
+	return 0;
+}
+
+/*
+ * This function will safely shutdown the storage manager.
+ * @return 0 on success, -1 on failure.
+ */
+int terminate_database(){
+	if(purge_buffer() != 0){
+		fprintf(stderr, 
+		        "Storage Manager: terminate database failed to purge buffer.\n");
+		return -1;
+	}
+	if(write_metadata() != 0){
+		fprintf(stderr, 
+		        "Storage Manager: terminate database failed to write metadata\n");
+		return -1;
+	}
+	return 0;
+}
+
+//Helper functions
+
+static int key_match(int * key_attr_types, union record_item * key, 
+                     union record_item * key_values, int key_indices_size){
+    for(int i = 0; i < key_indices_size; i++){
+        switch(key_attr_types[i]){
+            case 0:; //int
+                if(key[i].i != key_values[i].i)
+                    return 0;
+				break;
+            case 1:; //double
+                if(key[i].d != key_values[i].d)
+                    return 0;
+				break;
+            case 2:; //boolean
+                if(key[i].b != key_values[i].b)
+                    return 0;
+				break;
+            case 3:; // char
+                int rs1 = strcmp(key[i].c, key_values[i].c);
+                if (rs1 != 0)
+                    return 0;
+				break;
+            case 4:; // varchar
+                int rs2 = strcmp(key[i].v, key_values[i].v);
+                if (rs2 != 0)
+                    return 0;
+				break;
+        }
+    }
+    return 1;
+}
+
+static int compare_record(struct table_data * t_data, 
+                          union record_item * r1, union record_item * r2){
+	for(int j = 0; j < t_data->num_key_attr; j++){
+		int i = t_data->key_indices[j];
+        switch(t_data->attr_types[i]){
+            case 0: //int
+                if(r1[i].i < r2[i].i)
+                    return -1;
+				else if(r1[i].i > r2[i].i)
+					return 1;
+				break;
+            case 1:; //double
+                if(r1[i].d < r2[i].d)
+                    return -1;
+				else if(r1[i].d > r2[i].d)
+					return 1;
+				break;
+            case 2:; //boolean
+                if(r1[i].b < r2[i].b)
+                    return -1;
+				else if(r1[i].b > r2[i].b)
+					return 1;
+				break;
+            case 3:; // char
+                int rs1 = strcmp(r1[i].c, r2[i].c);
+                if (rs1 < 0)
+                    return -1;
+				else if(rs1 > 0)
+					return 1;
+				break;
+            case 4:; // varchar
+                int rs2 = strcmp(r1[i].v, r2[i].v);
+                if (rs2 < 0)
+                    return -1;
+				else if(rs2 > 0)
+					return 1;
+				break;
+        }
+    }  
+    return 0;
+}
+
+static int get_table_num(){
+    if(num_tables == 0){
+        table_data = malloc(sizeof(struct table_data *));
+		num_tables++;
+        return 0;
+    }
+    
+    for(int i = 0; i < num_tables; i++){
+        if(table_data[i] == NULL){
+            return i;
+        }
+    }
+    
+    table_data = realloc(table_data, 
+	                     sizeof(struct table_data *) * (num_tables + 1));
+    num_tables++;
+    return num_tables-1;
+}
+
+static int read_page( struct page_data ** p_out, int page_id, 
+                      struct table_data * t_data){
+	//check buffer
+	for(int i = 0; i < db_buffer_size; i++){
+		if(page_buffer[i] != NULL && page_buffer[i]->page_id == page_id){
+			*p_out = page_buffer[i];
+			//update the timestamp since it was just used
+			page_buffer[i]->timestamp = time(NULL);
+			return page_buffer[i]->num_tuples;
+		}
+	}
+	
+	//read in page
+	int length = snprintf(NULL, 0, "%s%d", db_db_loc, page_id);
+	char * page_loc = malloc(length+1);
+	snprintf(page_loc, length+1, "%s%d", db_db_loc, page_id);
+	
+	FILE * page_file = fopen(page_loc, "rb");
+
+	int num_records;
+	fread(&num_records, sizeof(int), 1, page_file);
+
+	int record_size;
+	fread(&record_size, sizeof(int), 1, page_file);
+	
+	union record_item** page = NULL;
+	create_empty_table(&page, t_data->tuples_per_page, t_data->num_attr);
+		
+	for(int i = 0; i < t_data->tuples_per_page; i++){
+		fread(&(page[i][0]), sizeof(union record_item), record_size, page_file);
+	}
+	
+	fclose(page_file);
+	free(page_loc);
+	
+	struct page_data * p_data = malloc(sizeof(struct page_data));
+	p_data->page_id = page_id;
+	p_data->num_tuples = num_records;
+	p_data->num_attr = record_size;
+	p_data->tuples_per_page = t_data->tuples_per_page;
+	p_data->timestamp = time(NULL);
+	p_data->data = page;
+	*p_out = p_data;
+	
+	for(int i = 0; i < db_buffer_size; i++){
+		if(page_buffer[i] == NULL){
+			page_buffer[i] = p_data;
+			return num_records;
+		}
+	}
+	
+	time_t timestamp = page_buffer[0]->timestamp;
+	int index = 0;
+	for(int i = 1; i < db_buffer_size; i++){
+		if(difftime(page_buffer[i]->timestamp, timestamp) < 0){
+			timestamp = page_buffer[i]->timestamp;
+			index = i;
+		}
+	}
+	
+	struct page_data * w_page = page_buffer[index];
+	if(write_page(w_page->data, w_page->page_id, w_page->num_tuples, 
+	              w_page->tuples_per_page, w_page->num_attr) >= 0){
+		fprintf(stderr, "Failed to write page from buffer.\n");
+		return -1;
+	}
+	
+	page_buffer[index] = p_data;
+	return num_records;
+}
+
+static int write_page( union record_item** page, int page_id, 
+                       int num_records, int tuples_per_page, int record_size){
+	int length = snprintf(NULL, 0, "%s%d", db_db_loc, page_id);
+	char * page_loc = malloc(length+1);
+	snprintf(page_loc, length+1, "%s%d", db_db_loc, page_id);
+	FILE * page_file = fopen(page_loc, "wb");
+
+	fwrite(&num_records, sizeof(int), 1, page_file);
+	
+	fwrite(&record_size, sizeof(int), 1, page_file);
+	
+	for(int i = 0; i < tuples_per_page; i++){
+		for(int j = 0; j < record_size; j++){
+			fwrite(&(page[i][j]), sizeof(union record_item), 1, page_file);
+		}
+	}
+	
+	fclose(page_file);
+	free(page_loc);
+	
+	return num_records;
+}
+
+static void create_empty_table(union record_item*** table, 
+                               int num_records, int num_attr){
+	*table = malloc(sizeof(union record_item*) * (num_records+1));
+	for(int i = 0; i < num_records; i++)
+		(*table)[i] = malloc(sizeof(union record_item) * num_attr);
+}
+
+static struct page_data * create_new_page(struct table_data * t_data){
+	//populate the page with its metadata
+	struct page_data * p_data = malloc(sizeof(struct page_data));
+	p_data->page_id = next_page++;
+	p_data->num_tuples = 0;
+	p_data->num_attr = t_data->num_attr;
+	p_data->tuples_per_page = t_data->tuples_per_page;
+	p_data->timestamp = time(NULL);
+	
+	//create the empty data section of the page
+	p_data->data = malloc(sizeof(union record_item*) * (t_data->tuples_per_page+1));
+	for(int i = 0; i < t_data->tuples_per_page; i++)
+		p_data->data[i] = malloc(sizeof(union record_item) * p_data->num_attr);
+	
+	
+	//look fopr a free spot in the buffer to add the page
+	for(int i = 0; i < db_buffer_size; i++){
+		if(page_buffer[i] == NULL){
+			page_buffer[i] = p_data;
+			return p_data;
+		}
+	}
+	
+	//if no free spot make a free spot by looking for the oldest page.
+	time_t timestamp = page_buffer[0]->timestamp;
+	int index = 0;
+	for(int i = 1; i < db_buffer_size; i++){
+		if(difftime(page_buffer[i]->timestamp, timestamp) < 0){
+			timestamp = page_buffer[i]->timestamp;
+			index = i;
+		}
+	}
+	
+	//write out the oldest page
+	struct page_data * w_page = page_buffer[index];
+	if(write_page(w_page->data, w_page->page_id, w_page->num_tuples, 
+	              w_page->tuples_per_page, w_page->num_attr) != 0){
+		fprintf(stderr, "Failed to write page from buffer.\n");
+		return NULL;
+	}
+	
+	page_buffer[index] = p_data;
+	return p_data;
+}
+
+static int insert_into_page(int page_id, 
+                            union record_item * record, 
+							struct table_data * t_data){
+	struct page_data * p_data = NULL;
+	int num_records = read_page(&p_data, page_id, t_data);
+	//check for record with same key 
+	for(int i = 0; i < num_records; i++){
+		int rs = compare_record(t_data, record, p_data->data[i]);
+		if(rs == 0){
+			fprintf(stderr, 
+			        "Error inserting record: record with key exists\n");
+			return -1;
+		}
+	}
+
+    // there is room in the page
+	if(num_records < t_data->tuples_per_page){
+		for(int i = 0; i < num_records; i++){
+			int rs = compare_record(t_data, record, p_data->data[i]);
+			if(rs == 0){
+				fprintf(stderr, 
+				        "Error inserting record: record with key exists\n");
+				return -1;
+			}
+			else if(rs < 0){
+				for(int j = t_data->tuples_per_page-1; j > i; j--){
+					memcpy(p_data->data[j], p_data->data[j-1], 
+					       sizeof(union record_item) * t_data->num_attr);
+				}
+				memcpy(p_data->data[i], record, 
+				       sizeof(union record_item) * t_data->num_attr);
+				t_data->table_size++;
+				p_data->num_tuples++;
 				return 0;
 			}
 		}
+		memcpy(p_data->data[num_records], record, 
+		       sizeof(union record_item) * t_data->num_attr);
+		t_data->table_size++;
+		p_data->num_tuples++;
+		return 0;
 	}
-	return -1;
-}
+	else{ // split page
+	    //find the index in the table pages array of the page we are splitting
+		int page_index;
+		for(int i = 0; i < t_data->num_pages; i++){
+			if(t_data->pages[i] == page_id){
+				page_index = i;
+				break;
+			}
+		}
+		
+		//determine how many go in the first page
+		int half = ceil((t_data->tuples_per_page+1)/2);
+		
+		//make two new pages
+		struct page_data * p_data1 = create_new_page(t_data);
+		struct page_data * p_data2 = create_new_page(t_data);
+		int p1_count = 0;
+		int p2_count = 0;
 
-int update_record( int table_id, union record_item * record ){
-	table_pages *table_info = get_table_struct( table_l, table_id );
-	table_data *table_schema = get_table_schema( table_id );
-	int r_size = table_schema->data_types_size;
-	r_item** buf_data = (r_item **)malloc(sizeof(r_item*));
-	if( get_record( table_id,record,buf_data ) == -1 ){
-		return -1;
-	}
-	int i = 0;
-	int key_loc = 0;
-	for( int j = 0; j < table_schema->data_types_size; j++){
-		if( i < table_schema->key_indices_size ){
-			key_loc = table_schema->key_indices[i];
+		//makes the pages array one bigger to hold the new page id
+		t_data->pages = realloc(t_data->pages, 
+		                        sizeof(int) * (t_data->num_pages + 1));
+		
+		//if only one page in the table, replace page index 0 and add page index 1
+		if(t_data->num_pages == 1){
+			t_data->pages[0] = p_data1->page_id;
+			t_data->pages[1] = p_data2->page_id;
+			t_data->num_pages++;
 		}
-		if( i != key_loc ){
-			*(buf_data[i]) = record[i];
+		//if page to be split is last page
+		else if(page_index == t_data->num_pages-1){
+			t_data->pages[t_data->num_pages-1] = p_data1->page_id;
+			t_data->pages[t_data->num_pages] = p_data2->page_id;
+			t_data->num_pages++;
 		}
+		//must be a middle page
+		else{
+			for(int i = t_data->num_pages; i > page_index; i--){
+				t_data->pages[i] = t_data->pages[i-1];
+			}
+			t_data->pages[page_index] = p_data1->page_id;
+			t_data->pages[page_index+1] = p_data2->page_id;
+			t_data->num_pages++;
+		}
+		
+		int found = 0;
+		//copy first half of the data into first new page
+		int copied = 0;
+		for(int i = 0; i < half; i++){
+			if(!found && compare_record(t_data, record, p_data->data[i]) < 0){
+				memcpy(p_data1->data[p1_count], record, 
+			       sizeof(union record_item) * t_data->num_attr);
+			    found = 1;
+				p1_count++;
+				if(p1_count == half)
+					break;
+			}
+			memcpy(p_data1->data[p1_count], p_data->data[i], 
+			       sizeof(union record_item) * t_data->num_attr);
+			p1_count++;
+			copied++;
+		}
+		//copy second half of data into second new page
+		for(int i = copied; i < t_data->tuples_per_page; i++){
+			if(!found && compare_record(t_data, record, p_data->data[i]) < 0){
+				memcpy(p_data2->data[p2_count], record, 
+			       sizeof(union record_item) * t_data->num_attr);
+			    found = 1;
+				p2_count++;
+			}
+			memcpy(p_data2->data[p2_count], p_data->data[i], 
+			       sizeof(union record_item) * t_data->num_attr);
+			p2_count++;
+		}
+		
+		if(!found){
+			memcpy(p_data2->data[p2_count], record, 
+			       sizeof(union record_item) * t_data->num_attr);
+			p2_count++;
+		}
+		
+		p_data1->num_tuples = p1_count;
+		p_data2->num_tuples = p2_count;
+		delete_page(page_id);
+		t_data->table_size++;
 	}
-	free(buf_data);
 	return 0;
 }
 
-int remove_record( int table_id, union record_item * key_values ){
+static void delete_page(int page_id){
+	//look for page in buffer
+	for(int i = 0; i < db_buffer_size; i++){
+		if(page_buffer[i] != NULL && page_buffer[i]->page_id == page_id){
+			page_buffer[i] = NULL;
+		}
+	}
+	//try to delete the page from hardware... okay if it fails due to missing file
+	int length = snprintf(NULL, 0, "%s%d", db_db_loc, page_id);
+	char * page_loc = malloc(length+1);
+	snprintf(page_loc, length+1, "%s%d", db_db_loc, page_id);
+	remove(page_loc);
+}	
+
+static void write_table_metadata(struct table_data * t_data, FILE * meta_file){
+	//write data
+	fwrite(&(t_data->table_num), sizeof(int), 1, meta_file);
+	fwrite(&(t_data->table_size), sizeof(int), 1, meta_file);
+	fwrite(&(t_data->tuples_per_page), sizeof(int), 1, meta_file);
+	fwrite(&(t_data->num_attr), sizeof(int), 1, meta_file);
+	fwrite(&(t_data->num_key_attr), sizeof(int), 1, meta_file);
+	fwrite(&(t_data->num_pages), sizeof(int), 1, meta_file);
 	
+	//write out attr types
+	for(int i = 0; i < t_data->num_attr; i++)
+		fwrite(&(t_data->attr_types[i]), sizeof(int), 1, meta_file);
+	
+	//write out key indicies
+	for(int i = 0; i < t_data->num_key_attr; i++)
+		fwrite(&(t_data->key_indices[i]), sizeof(int), 1, meta_file);
+	
+	//write out page numbers
+	for(int i = 0; i < t_data->num_pages; i++)
+		fwrite(&(t_data->pages[i]), sizeof(int), 1, meta_file);
 }
 
-/*
- * Initialize array of records for the page, due to the fact theat
- * the page isn't aware of the table structure. The page doesn't 
- * know how many record_items are in a record. The buffer only cares 
- * about what records are there.
- */
-void init_page_layout( int pid, int record_num, page_info* page ){
-	page->page_id = pid;
-	page->num_of_records = record_num;
-	page->page_records = (r_item **)malloc(db_data->page_size*sizeof(r_item));
-}
-/*
- * Initialize global page buffer pointer and allocate the number
- * of pages in memory and initialize the pages_id to -1 and record 
- * count to floor( page_size / sizeof(record_item) ).
- */
-void init_page_buffer(){
-	page_buffer = (buffer_manager *)malloc(sizeof(buffer_manager));
-	page_buffer->num_of_pages = db_data->buffer_size;
-	page_buffer->last_id = -1;
-	page_buffer->pages = (page_info *)malloc(page_buffer->num_of_pages*sizeof(page_info));
-	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		init_page_layout( -1, 0, &(page_buffer->pages[i]) );
+	
+static int write_metadata(){ 
+	int length = snprintf(NULL, 0, "%smetadata.dat", db_db_loc);
+	char * meta_loc = malloc(length+1);
+	snprintf(meta_loc, length+1, "%smetadata.data", db_db_loc);
+	
+	//write page size and buffer size
+	FILE * meta_file = fopen(meta_loc, "wb");
+
+	fwrite(&db_page_size, sizeof(int), 1, meta_file);
+	fwrite(&db_buffer_size, sizeof(int), 1, meta_file);
+	
+	//write out number of tables
+	fwrite(&num_tables, sizeof(int), 1, meta_file);
+	
+	//write out table metadata
+	for(int i = 0; i < num_tables; i++){
+		if(table_data[i] != NULL)
+			write_table_metadata(table_data[i], meta_file);
 	}
+	return 0; 
 }
 
-/*
- * Read data in a page to the buffer. If there isn't enough 
- * room in the buffer remove the least requested page from
- * the buffer. Then add the page to the buffer, increasing
- * its req count in the process. If the page is already in
- * the buffer then return the location of it in the array
- * and increment its req_count.
- * Return location of page in the buffer o.w. -1
- */
-int request_page_in_buffer( int page_id ){
-	int loc = -1;
-	// check if page is already in buffer
-	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if ( page_buffer->pages[i].page_id == page_id ){ 
-			loc = i;
-		}
+static void read_table_metadata(FILE * meta_file){
+	struct table_data * t_data = malloc(sizeof(struct table_data));
+	//read table data
+	fread(&(t_data->table_num), sizeof(int), 1, meta_file);
+	fread(&(t_data->table_size), sizeof(int), 1, meta_file);
+	fread(&(t_data->tuples_per_page), sizeof(int), 1, meta_file);
+	fread(&(t_data->num_attr), sizeof(int), 1, meta_file);
+	fread(&(t_data->num_key_attr), sizeof(int), 1, meta_file);
+	fread(&(t_data->num_pages), sizeof(int), 1, meta_file);
+	
+	//read in attr types
+	t_data->attr_types = malloc(sizeof(int) * t_data->num_attr);
+	for(int i = 0; i < t_data->num_attr; i++)
+		fread(&(t_data->attr_types[i]), sizeof(int), 1, meta_file);
+	
+	//read in key indicies
+	t_data->key_indices = malloc(sizeof(int) * t_data->num_key_attr);
+	for(int i = 0; i < t_data->num_key_attr; i++)
+		fread(&(t_data->key_indices[i]), sizeof(int), 1, meta_file);
+	
+	//read in page numbers
+	t_data->pages = malloc(sizeof(int) * t_data->num_pages);
+	for(int i = 0; i < t_data->num_pages; i++)
+		fread(&(t_data->pages[i]), sizeof(int), 1, meta_file);
+	
+	table_data[t_data->table_num] = t_data;
+}
+
+static int read_metadata(){ 
+	int length = snprintf(NULL, 0, "%smetadata.dat", db_db_loc);
+	char * meta_loc = malloc(length+1);
+	snprintf(meta_loc, length+1, "%smetadata.data", db_db_loc);
+	
+	//read page size and buffer size
+	FILE * meta_file = fopen(meta_loc, "rb");
+
+	fread(&db_page_size, sizeof(int), 1, meta_file);
+	fread(&db_buffer_size, sizeof(int), 1, meta_file);
+	
+	//read number of tables
+	fread(&num_tables, sizeof(int), 1, meta_file);
+	
+	//read in table metadata
+	table_data = malloc(sizeof(struct table_data *) * num_tables);
+	for(int i = 0; i < num_tables; i++){
+		table_data[i] = NULL;
+		read_table_metadata(meta_file);
 	}
-	if( loc >= 0 ){ // if page is in buffer increase req count 
-		page_buffer->pages[loc].req_count++;
-		return loc;
-	}else{ // if page isn't in buffer
-		int free_spot = -1;
-		if( check_buffer_status() ){ 
-			free_spot = remove_least_used_page();
-			add_page_to_buffer( page_id, free_spot );
-		}else{
-			free_spot = get_open_spot();
-			add_page_to_buffer( page_id, free_spot );
-		}
-		page_buffer->pages[free_spot].req_count++;
-		return free_spot;
-	}
-}
-
-/*
- * Add the given page to the buffer in the location specified
- * to the function.
- * Return 0 with success and -1 for failure.
- */
-int add_page_to_buffer( int page_id, int loc ){
-	int result = 0;
-	// read in the records to array
-	result = read_page( page_id, &(page_buffer->pages[loc]) );
-	return result;
-}
-
-/*
- * Assumes all page id's are positive.
- * Check if the buffer is full, if not return false and true o.w.
- */
-bool check_buffer_status( ){
-	bool full = true; // assume buffer is full
-	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if( page_buffer->pages[i].page_id == -1 ){
-			full = false; // page struct isn't in use
-		}
-	}
-	return full;
-}
-
-/*
- * Remove the least used page from the buffer. Find the least used page
- * and remove it. Set its page_id, record_count, req_count to -1 and
- * memset its record array to null.
- * Return location of removed page, showing its available and -1 o.w.
- */
-int remove_least_used_page( ){
-	int least_loc = -1;
-	int smallest = INT_MAX;
-	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if ( smallest > page_buffer->pages[i].req_count ){
-			smallest = page_buffer->pages[i].req_count;
-			least_loc = i;
-		}
-	}
-	if( write_page( &(page_buffer->pages[least_loc]) ) >= 0 ){
-		// reset the page_buffer location to base values a.k.a its available now
-		page_buffer->pages[least_loc].page_id = -1;
-		page_buffer->pages[least_loc].req_count = -1;
-		memset(page_buffer->pages[least_loc].page_records, 0, db_data->page_size*sizeof(r_item));
-	}
-
-	return least_loc;
-}
-
-/*
- * Find first available position in page buffer to write to.
- * Return location in buffer o.w. -1 for failure.
- */
-int get_open_spot(){
-	for( int i = 0; i < page_buffer->num_of_pages; i++){
-		if ( page_buffer->pages[i].page_id == -1 ){
-			return i;
-		}
-	}
-	return -1;
-}
-
-/*
- * Write page information to the corresponding page file
- * on the disk.
- * Return 0 with success and -1 for failure.
- */
-int write_page( page_info* page ){
-	FILE* fp;
-	int file_len = strlen(db_data->db_location) + PAGE_FILE_LEN + MAX_PAGES_FILE_CHARS;
-	char *page_file = (char *)malloc(file_len*sizeof(char));
-	memset(page_file, 0, file_len*sizeof(char));
-	strcat(page_file, db_data->db_location);
-	strcat(page_file, PAGE_FILENAME_BEGIN);
-	sprintf(page_file, "%s_%d",page_file,page->page_id);
-
-	fp = fopen(page_file, "wb");
-	if( fp == NULL ){
-		fprintf(stderr, "ERROR: write_page, invalid page file %s\n", page_file);
-		return -1;
-	}
-	// DON'T write req_count only use when page is in buffer.
-	fwrite(page->page_records,sizeof(r_item),db_data->page_size,fp);
-
-	free( page_file );
-	fclose( fp );
-	return 0;
-}
-
-/*
- * Read page information from disk into the passed structure.
- * Treats the records as a one dimensional array of record_items
- * because the page structure doesn't care about the table structure
- * for the records.
- * Return 0 for success and -1 for failure.
- */
-int read_page( int page_id, page_info* page ){
-	FILE* fp;
-	long fsize;
-	int file_len = strlen(db_data->db_location) + PAGE_FILE_LEN + MAX_PAGES_FILE_CHARS;
-	char *page_file = (char *)malloc(file_len*sizeof(char));
-	memset(page_file, 0, file_len*sizeof(char));
-	strcat(page_file, db_data->db_location);
-	strcat(page_file, PAGE_FILENAME_BEGIN);
-	sprintf(page_file, "%s_%d",page_file,page->page_id);
-
-	fp = fopen(page_file, "rb");
-	if( fp == NULL ){
-		fprintf(stderr, "ERROR: read_page, invalid page file %s\n", page_file);
-		return -1;
-	}
-	// read page file into 2d array
-	fread(page->page_records,sizeof(r_item),db_data->page_size,fp);
-	page_desc *p_info = get_page_desc( page_id,page_lookup );
-	page->page_id = page_id;
-	page->num_of_records = p_info->num_records;
-	page->req_count = 0;
-	return 0;
-}
-
-/*
- * This will purge the page buffer to disk.
- * @return 0 on success, -1 on failure.
- */
-int purge_buffer(){
-	int result = 0;
-    // basically loop through the buffer array and write the pages to the filee system
-	for(int i = 0; i < page_buffer->num_of_pages; i++){
-		if( write_page( &(page_buffer->pages[i]) ) == -1){
-			result = -1;
-		}
-	}
-	return result;
-}
-
-void free_buffer(){
-	for(int i = 0; i < page_buffer->num_of_pages; i++){
-		free( page_buffer->pages[i].page_records );
-	}
-	free( page_buffer->pages );
-}
-
-void print_page_buffer(){
-    printf("Page Buffer with Last id '%d' and num of pages '%d'\n", page_buffer->last_id, page_buffer->num_of_pages);
-    for(int i = 0; i < page_buffer->num_of_pages; i++){
-        printf("\tPage %d: [num of records = %d] [req count = %d]\n", page_buffer->pages[i].page_id, page_buffer->pages[i].num_of_records, page_buffer->pages[i].req_count);
-    }
-}
+	return 0; 
+ }	
+	

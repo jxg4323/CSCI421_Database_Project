@@ -4,7 +4,7 @@
  * Allocate memory fo catalogs structure and return the pointer if 
  * success otherwise return null.
  */
-catalogs* intialize_catalogs(){
+catalogs* initialize_catalogs(){
 	catalogs* logs = (catalogs *)malloc(sizeof(catalogs));
 	logs->table_count = 0;
 	return logs;
@@ -16,7 +16,7 @@ catalogs* intialize_catalogs(){
  */
 void manage_catalogs(catalogs *logs, int table_count, bool increase){
 	if(increase){
-		logs->all_tables = (table_catalog *)realloc(table_count*sizeof(table_catalog));
+		logs->all_tables = (table_catalog *)realloc(logs->all_tables, table_count*sizeof(table_catalog));
 		logs->table_count++;
 	}else{
 		logs->all_tables = (table_catalog *)malloc(table_count*sizeof(table_catalog));
@@ -30,10 +30,10 @@ void manage_catalogs(catalogs *logs, int table_count, bool increase){
  */
 void manage_attributes(table_catalog* t_cat, int attr_count, bool increase){
 	if( increase ){
-		t_cat->attributes = (table_catalog *)realloc(attr_count*sizeof(attr_info));
+		t_cat->attributes = (attr_info *)realloc(t_cat->attributes, attr_count*sizeof(attr_info));
 		t_cat->attribute_count++;
 	}else{
-		t_cat->attributes = (table_catalog *)malloc(attr_count*sizeof(attr_info));
+		t_cat->attributes = (attr_info *)malloc(attr_count*sizeof(attr_info));
 		t_cat->attribute_count = attr_count;
 	}
 }
@@ -44,10 +44,10 @@ void manage_attributes(table_catalog* t_cat, int attr_count, bool increase){
  */
 void manage_foreign_rels(table_catalog* t_cat, int rel_count, bool increase){
 	if( increase ){
-		t_cat->relations = (table_catalog *)realloc(rel_count*sizeof(foreign_data));
+		t_cat->relations = (foreign_data *)realloc(t_cat->relations, rel_count*sizeof(foreign_data));
 		t_cat->foreign_size++;
 	}else{
-		t_cat->relations = (table_catalog *)malloc(rel_count*sizeof(foreign_data));
+		t_cat->relations = (foreign_data *)malloc(rel_count*sizeof(foreign_data));
 		t_cat->foreign_size = rel_count;
 	}
 }
@@ -58,7 +58,7 @@ void manage_foreign_rels(table_catalog* t_cat, int rel_count, bool increase){
  */
 void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase){
 	if( increase ){
-		t_cat->primary_tuple = (int *)realloc(prim_size*sizeof(int));
+		t_cat->primary_tuple = (int *)realloc(t_cat->primary_tuple, prim_size*sizeof(int));
 		t_cat->primary_size++;
 	}else{
 		t_cat->primary_tuple = (int *)malloc(prim_size*sizeof(int));
@@ -72,7 +72,7 @@ void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase){
  */
 void manage_unique_tuple(table_catalog *t_cat, int size, bool increase){
 	if( increase ){
-		t_cat->unique_tuples = (unique *)realloc(size*sizeof(unique));
+		t_cat->unique_tuples = (unique *)realloc(t_cat->unique_tuples, size*sizeof(unique));
 		t_cat->unique_size++;
 	}else{
 		t_cat->unique_tuples = (unique *)malloc(size*sizeof(unique));
@@ -95,9 +95,9 @@ void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p
 	catalog->table_name = (char *)malloc(strlen(table_name)*sizeof(char));
 	strcpy(catalog->table_name, table_name);
 	catalog->attributes = (attr_info*)malloc(a_size*sizeof(attr_info));
-	catalog->foreign_data = (foreign_data*)malloc(f_size*sizeof(foreign_data));
+	catalog->relations = (foreign_data*)malloc(f_size*sizeof(foreign_data));
 	catalog->primary_tuple = (int *)malloc(p_size*sizeof(int));
-	catalog->unique_tuple = (int *)malloc(u_size*sizeof(int));
+	catalog->unique_tuples = (unique *)malloc(u_size*sizeof(int));
 }
 
 /*
@@ -119,9 +119,11 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
  * it as NOT deleted. User is responsible for freeing the parameter int
  * arrays.
  */
-void init_foreign_relation(foreign_data* fdata, int fid, int size, int *orig_attrs, int *for_attrs){
+void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs){
 	fdata->deleted = false;
 	fdata->foreign_table_id = fid;
+	fdata->name = (char *)malloc(strlen(name)*sizeof(char));
+	strcpy(fdata->name, name);
 	fdata->tuple_size = size;
 	fdata->orig_attr_locs = (int *)malloc(size*sizeof(int));
 	fdata->for_attr_locs = (int *)malloc(size*sizeof(int));
@@ -138,7 +140,7 @@ void init_unique_tuple(unique* udata, int tup_size, int *tup){
 	udata->deleted = false;
 	udata->tup_size = tup_size;
 	udata->attr_tuple = (int *)malloc(tup_size*sizeof(int));
-	memcpy(udata->attr_tuple, tup);
+	memcpy(udata->attr_tuple, tup, tup_size*sizeof(int));
 }
 
 /*
@@ -148,7 +150,7 @@ void init_unique_tuple(unique* udata, int tup_size, int *tup){
 void init_primary_tuple(table_catalog *t_cat, int *tuple, int size){
 	t_cat->primary_size = size;
 	t_cat->primary_tuple = (int *)malloc(size*sizeof(int));
-	memcpy(t_cat->primary_tuple, tuple);
+	memcpy(t_cat->primary_tuple, tuple, size*sizeof(int));
 }
 
 /*
@@ -175,63 +177,66 @@ int read_catalogs(char *db_loc, catalogs* logs){
 	manage_catalogs( logs, count, false ); // assume the table catalogs array hasn't been allocated
 	while( 1 ){
 		int t_id, a_count, foreign_count, unique_count, prim_count, name_size;
-		fread(&tid, sizeof(int), 1, fp);
+		fread(&t_id, sizeof(int), 1, fp);
 		fread(&a_count, sizeof(int), 1, fp);
 		fread(&foreign_count, sizeof(int), 1, fp);
 		fread(&unique_count, sizeof(int), 1, fp);
 		fread(&prim_count, sizeof(int), 1, fp);
 		fread(&name_size, sizeof(int), 1, fp);
-		char *temp = (char *)malloc(name_size*sizeof(char));
-		memset(temp, 0, name_size*sizeof(char));
+		char *temp = (char *)malloc((name_size+1)*sizeof(char));
+		memset(temp, '\0', (name_size+1)*sizeof(char));
 		fread(temp, sizeof(char), name_size, fp);
-		init_catalog( &(logs->all_tables[inx]), t_id, a_count, foreign_count, prim_count, unique_count, temp );
+		init_catalog( &(logs->all_tables[indx]), t_id, a_count, foreign_count, prim_count, unique_count, temp );
 		// read attribute info 
+		char *a_name;
 		for(int i = 0; i < a_count; i++){
 			int type, notnull, primkey, unique, rel_count;
 			name_size = 0;
 			fread(&type, sizeof(int), 1, fp);
 			fread(&notnull, sizeof(int), 1, fp);
 			fread(&primkey, sizeof(int), 1, fp);
+			fread(&unique, sizeof(int), 1, fp);
 			fread(&name_size, sizeof(int), 1, fp);
-			char *a_name = (char *)malloc(name_size*sizeof(char));
-			memset(a_name, 0, name_size*sizeof(char));
+			a_name = (char *)malloc((name_size+1)*sizeof(char)); // TODO: add null character at end
+			memset(a_name, '\0', (name_size+1)*sizeof(char));
 			fread(a_name, sizeof(char), name_size, fp);
 			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, a_name);
 			free(a_name);
 		}
 		// read foreign relation information
+		char *name;
 		for(int i = 0; i < foreign_count; i++){
 			int fid, size;
 			name_size = 0;
 			fread(&fid, sizeof(int), 1, fp);
 			fread(&size, sizeof(int), 1, fp);
 			fread(&name_size, sizeof(int), 1, fp);
-			char *name = (char *)malloc(name_size*sizeof(char));
-			memset(name, 0, name_size*sizeof(char));
+			name = (char *)malloc((name_size+1)*sizeof(char));
+			memset(name, '\0', (name_size+1)*sizeof(char));
+			fread(name, sizeof(char), name_size, fp);
 			int *orig_temp = (int *)malloc(size*sizeof(int));
 			int *for_temp = (int *)malloc(size*sizeof(int));
 			fread(orig_temp, sizeof(int), size, fp);
 			fread(for_temp, sizeof(int), size, fp);
-			init_foreign_relation( &(logs->all_tables[indx].relations[i]))
+			init_foreign_relation( &(logs->all_tables[indx].relations[i]), name, fid, size, orig_temp, for_temp );
 			free( name );
 			free( orig_temp );
 			free( for_temp );
 		}
 		// read unique tuples
+		int *arr;
 		for(int i = 0; i < unique_count; i++){
 			int size;
 			fread(&size, sizeof(int), 1, fp);
-			int *arr = (int *)malloc(size*sizeof(int));
+			arr = (int *)malloc(size*sizeof(int));
 			fread(arr, sizeof(int), size, fp);
 			init_unique_tuple( &(logs->all_tables[indx].unique_tuples[i]), size, arr);
 			free( arr );
 		}
 		// read primary key tuple
-		int p_size;
-		fread(&p_size, sizeof(int), 1, fp);
-		int *p_temp = (int *)malloc(p_size*sizeof(int));
-		fread(p_temp, sizeof(int), p_size, fp);
-		init_primary_tuple(&(logs->all_tables[indx]), p_temp, p_size);
+		int *p_temp = (int *)malloc(prim_count*sizeof(int));
+		fread(p_temp, sizeof(int), prim_count, fp);
+		init_primary_tuple(&(logs->all_tables[indx]), p_temp, prim_count);
 
 		if(feof(fp) || indx == (count -1)){ // read until end of file or no more tables
 			break;
@@ -250,8 +255,6 @@ int read_catalogs(char *db_loc, catalogs* logs){
  * for freeing the logs.
  */
 int write_catalogs(char *db_loc, catalogs* logs){
-	// TODO: change to accomodate new structure --> accomodate deleted flags
-	// MAKE sure when writing attributes that the length of the name is written
 	FILE* fp;
 
 	int file_len = strlen(db_loc) + TABLE_CATALOG_FILE_LEN;
@@ -270,7 +273,7 @@ int write_catalogs(char *db_loc, catalogs* logs){
 	for( int indx = 0; indx < logs->table_count; indx++ ){
 		if ( logs->all_tables[indx].deleted ){continue;} // don't write the deleted table info
 		int tru_acount, tru_relcount, tru_unicount;
-		// get counts of array information without deltes
+		// get counts of array information without deletes
 		tru_acount = get_attribute_count_no_deletes( &(logs->all_tables[indx]) );
 		tru_relcount = get_relation_count_no_deletes( &(logs->all_tables[indx]) );
 		tru_unicount = get_unique_count_no_deletes( &(logs->all_tables[indx] ));
@@ -289,22 +292,24 @@ int write_catalogs(char *db_loc, catalogs* logs){
 			fwrite(&(logs->all_tables[indx].attributes[i].type), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].notnull), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].primarykey), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].unique), sizeof(int), 1, fp);
 			fwrite(&name_size, sizeof(int), 1, fp);
 			fwrite(logs->all_tables[indx].attributes[i].name, sizeof(char), name_size, fp);
 		}
 		// write foreign relation information
-		for(int i = 0; i < foreign_count; i++){
+		for(int i = 0; i < logs->all_tables[indx].foreign_size; i++){
 			if( logs->all_tables[indx].relations[i].deleted ){continue;}
 			name_size = strlen(logs->all_tables[indx].relations[i].name);
 			int temp = logs->all_tables[indx].relations[i].tuple_size;
 			fwrite(&(logs->all_tables[indx].relations[i].foreign_table_id), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].relations[i].tuple_size), sizeof(int), 1, fp);
 			fwrite(&name_size, sizeof(int), 1, fp);
+			fwrite(logs->all_tables[indx].relations[i].name, sizeof(char), name_size, fp);
 			fwrite(logs->all_tables[indx].relations[i].orig_attr_locs, sizeof(int), temp, fp);
 			fwrite(logs->all_tables[indx].relations[i].for_attr_locs, sizeof(int), temp, fp);
 		}
 		// write unique tuples
-		for(int i = 0; i < unique_count; i++){
+		for(int i = 0; i < logs->all_tables[indx].unique_size; i++){
 			if( logs->all_tables[indx].unique_tuples[i].deleted ){continue;}
 			int size = logs->all_tables[indx].unique_tuples[i].tup_size;
 			fwrite(&(size), sizeof(int), 1, fp); 
@@ -324,7 +329,6 @@ int write_catalogs(char *db_loc, catalogs* logs){
 /*
  * Create new table catalog with just table name and newly allocated structure
  * Return location of new catalog in array if success otherwise -1.
- TODO: redo
  */
 int new_catalog(catalogs *logs, char *table_name){
 	if( check_table_name( logs,table_name ) ){ 
@@ -333,7 +337,7 @@ int new_catalog(catalogs *logs, char *table_name){
 	}
 	int last = logs->table_count;
 	manage_catalogs( logs, logs->table_count+1, true );
-	init_catalog( &(logs->all_tables[last]),last,0,table_name );
+	init_catalog( &(logs->all_tables[last]),last,0,0,0,0,table_name );
 	return last;
 }
 
@@ -350,8 +354,8 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
 		fprintf( stderr, "ERROR: add_attribute, Type not knonw\n" );
 		return -1;
 	}
-	manage_attributes( t_cat, t_cat->attribute_count+1 );
-	init_attribute( &(t_cat->attributes[last]), type, constraints[0], constraints[1], constraints[2], attr_name );
+	manage_attributes( t_cat, t_cat->attribute_count+1, true );
+	init_attribute( &(t_cat->attributes[last]), type_con, constraints[0], constraints[1], constraints[2], attr_name );
 	return 1;
 }
 
@@ -359,8 +363,7 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
  * Mark an attribute as deleted in the attribute information matrix. If an 
  * attribute is marked as removed then don't write it to the disk.
  * Check if attribute is apart of foreign key, primary key, or unique tuple.
- * Return 1 for success and -1 for failure.
- TODO: redo
+ * Return 1 for success and -1 for failure.\
  */
 int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name){
 	int attr_id = get_attr_loc(t_cat, attr_name);
@@ -370,7 +373,7 @@ int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name){
 		return -1; 
 	}
 	// Check if primary key contains this attribute
-	if( check_prim_key(tcat, attr_id) ){ 
+	if( check_prim_key(t_cat, attr_id) ){ 
 		fprintf(stderr, "ERROR: Attribute: %s is apart of the primary key and CANNOT be removed\n", attr_name);
 		return -1;
 	}
@@ -404,6 +407,8 @@ int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name){
 	}
 	// Check if any unique tuples contiain the attribute
 	int result = delete_uniq_tup( t_cat, attr_id );
+	// mark attribute as deleted
+	t_cat->attributes[attr_id].deleted = true;
 	return 1;
 }
 
@@ -414,30 +419,34 @@ int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name){
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
 int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count){
+	int last = t_cat->foreign_size;
 	char *f_name = foreign_row[0];
 	table_catalog* for_cat = get_catalog_p( logs, f_name );
+	if( for_cat == NULL ){
+		fprintf(stderr, "Foreign Table: %s doesn't exist.\n", f_name );
+		return -1;
+	}
 	manage_foreign_rels( t_cat, t_cat->foreign_size+1, true );
 	int *o_arr = (int *)malloc(f_key_count*sizeof(int));
 	int *f_arr = (int *)malloc(f_key_count*sizeof(int));
-	int s = (1+f_count);
+	int s = (f_key_count);
 	int c = 0;
 	int t = 0;
-	for( int j = 1; j<f_count; j++ ){ 
+	for( int j = 1; j<(2*f_key_count)+1; j++ ){ 
 		int tmp = 0;
-		if( j < s ){
-			tmp = get_attr_loc( t_cat, foreign_row[j] );
+		if( j <= s ){
+			tmp = get_attr_loc( t_cat, foreign_row[j] ); //TODO: add error if attribute doesn't exists
 			o_arr[c] = tmp;
 			c++;
-		}else if( j >= s ){
+		}else if( j > s ){
 			tmp = get_attr_loc( for_cat, foreign_row[j] );
 			f_arr[t] = tmp;
 			t++;
 		}
 	}
-	init_foreign_relation( &(t_cat->relations[t_cat->foreign_size]), for_cat->id, f_key_count, o_arr, f_arr );
+	init_foreign_relation( &(t_cat->relations[last]), f_name, for_cat->id, f_key_count, o_arr, f_arr );
 	free( o_arr );
 	free( f_arr );
-	t_cat->foreign_size++;
 	return 1;
 }
 
@@ -456,12 +465,12 @@ int remove_foreign_data(catalogs* logs, table_catalog* t_cat, char**foreign_row,
 	int size = (2*f_count)+1;
 	int *arr = (int*)malloc((size-1)*sizeof(int));
 	// converts foreign_row to int array
-	int s = (1+f_count);
-	for( int j = 1; j<f_count; j++ ){ 
+	int s = (f_count);
+	for( int j = 1; j<size; j++ ){ 
 		int tmp = 0;
-		if( j < s ){
+		if( j <= s ){
 			tmp = get_attr_loc( t_cat, foreign_row[j] );
-		}else if( j >= s ){
+		}else if( j > s ){
 			tmp = get_attr_loc( for_cat, foreign_row[j] );
 		}
 		arr[j-1] = tmp;
@@ -549,9 +558,8 @@ int add_unique_key(table_catalog* t_cat, char **unique_name, int size){
 	}
 	// Create new unique tuple in table
 	manage_unique_tuple( t_cat, t_cat->unique_size+1, true);
-	init_unique_tuple( &(t_cat->unique_tuples[last]), arr, size );
+	init_unique_tuple( &(t_cat->unique_tuples[last]), size, arr );
 	free( arr );
-	t_cat->unique_size++;
 	return 1;
 }
 
@@ -629,7 +637,7 @@ int get_attr_loc(table_catalog *tcat, char *attr_name){
 	if( loc == -1 ){
 		fprintf(stderr, "ERROR: attribute doesn't exist in %s\n", tcat->table_name);
 	}
-	return -1;
+	return loc;
 }
 
 /*
@@ -667,7 +675,7 @@ int find_attr(table_catalog* t_cat, char *attr_name){
 bool check_prim_key( table_catalog* tcat, int attr_id ){
 	bool result = false; // assume attribute isn't in key tuple
 	for( int i = 0; i<tcat->primary_size; i++ ){
-		if( tcat->primary_tuple == attr_id ){ 
+		if( tcat->primary_tuple[i] == attr_id ){ 
 			result = true; 
 			return result;
 		}
@@ -704,7 +712,7 @@ int check_foreign_relations( table_catalog* tcat, int attr_id, int *ret_arr ){
  * deleted and return 1 with success, -1 otherwise.
  */
 int delete_uniq_tup( table_catalog* tcat, int attr_id ){
-	bool check = false
+	bool check = false;
 	for( int i = 0; i<tcat->unique_size; i++ ){
 		for( int j = 0; j<tcat->unique_tuples[i].tup_size; j++ ){
 			if( attr_id == tcat->unique_tuples[i].attr_tuple[j] ){
@@ -742,7 +750,10 @@ void terminate_catalog(catalogs *logs){
 		free( logs->all_tables[i].table_name );
 		free( logs->all_tables[i].attributes );
 		free( logs->all_tables[i].relations );
-		free( logs->all_tables[i].primary_tuple );
+		// confirm primary key hasn't already been freed
+		if( logs->all_tables[i].primary_size > 0){
+			free( logs->all_tables[i].primary_tuple );
+		}
 	}
 	free( logs->all_tables );
 }
@@ -803,8 +814,8 @@ int get_attribute_count_no_deletes(table_catalog* t_cat){
  */
 int get_relation_count_no_deletes(table_catalog* tcat){
 	int total = 0;
-	for( int i = 0; i < t_cat->foreign_count; i++ ){
-		if( !t_cat->relations[i].deleted ){ // only increment non-deleted tables
+	for( int i = 0; i < tcat->foreign_size; i++ ){
+		if( !tcat->relations[i].deleted ){ // only increment non-deleted tables
 			total++;
 		}
 	}
@@ -818,12 +829,20 @@ int get_relation_count_no_deletes(table_catalog* tcat){
  */
 int get_unique_count_no_deletes(table_catalog* tcat){
 	int total = 0;
-	for( int i = 0; i < t_cat->unique_count; i++ ){
-		if( !t_cat->unique_relations[i].deleted ){ // only increment non-deleted tables
+	for( int i = 0; i < tcat->unique_size; i++ ){
+		if( !tcat->unique_tuples[i].deleted ){ // only increment non-deleted tables
 			total++;
 		}
 	}
 	return total;
+}
+
+/*
+ * Return the name of the attribute in the provided table.
+ */
+char *get_attr_name( catalogs* logs, char *table_name, int attr_id ){
+	table_catalog* temp = get_catalog_p( logs, table_name );
+	return temp->attributes[attr_id].name;
 }
 
 /*
@@ -840,78 +859,80 @@ void pretty_print_catalogs(catalogs* logs){
  * relations, and unique tupes.to stdout.
  */
 void pretty_print_table(table_catalog* tcat){
-	printf("Table: {name: %s, deleted: %d, attribute_count: %d, "
+	printf("Table: \n{name: %s, deleted: %d, attribute_count: %d, "
 			"foreign_size: %d, primary_size: %d,"" unique_tuples: %d, " 
-			"Attributes: \n",
-			tcat->tables_name, tcat->deleted, tcat->attribute_count, 
+			"Attributes: [\n",
+			tcat->table_name, tcat->deleted, tcat->attribute_count, 
 			tcat->foreign_size, tcat->primary_size, tcat->unique_size );
 	// print attributes
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );
 	printf("Foreign Relations:\n");
 	// print relations
-	pretty_print_relations( tcat->relation, tcat->foreign_size );
+	pretty_print_relations( tcat, tcat->relations, tcat->foreign_size );
 	printf("Unique Tuples:\n");
 	// print unique tuples
-	pretty_print_unique_tuples( tcat->unique_tuples, tcat->unique_size );
-	printf("Primary Key:\n");
+	pretty_print_unique_tuples( tcat, tcat->unique_tuples, tcat->unique_size );
 	// print primary key
-	pretty_print_primary_tuples( tcat->primary_tuple, tcat->primary_size );
+	pretty_print_primary_tuples( tcat, tcat->primary_tuple, tcat->primary_size );
 }
 
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
-		printf("\tName: '%s' --> type: %d, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, attributes[i].type, attributes[i].deleted ? 1 : 0,
+		// TODO: switch type to string
+		printf("\tName: '%s' --> attr_id: %d, type: %d, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+			attributes[i].name, i, attributes[i].type, attributes[i].deleted ? 1 : 0,
 			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
 	}
 }
 
-void pretty_print_relations( foreign_data* relations, int size ){
+void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size ){
 	for( int i = 0; i<size; i++ ){
 		int tup_size = relations[i].tuple_size;
-		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d, Original Attributes: [",
+		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d,\n\t\tRelation: (",
 				relations[i].name, relations[i].foreign_table_id, relations[i].deleted ? 1 : 0,
 				relations[i].tuple_size);
 		for( int j = 0; j<tup_size; j++ ){
 			if(j == tup_size-1){
-				printf("%d",relations[i].orig_attr_locs[j]);
+				printf("'%s'",tcat->attributes[relations[i].orig_attr_locs[j]].name);
 			}else{
-				printf("%d, ",relations[i].orig_attr_locs[j]);
+				printf("'%s', ",tcat->attributes[relations[i].orig_attr_locs[j]].name);
 			}
 		}
-		printf("], Foreign Atrributes: [");
+		printf(") --> (");
 		for( int j = 0; j<tup_size; j++ ){
 			if(j == tup_size-1){
-				printf("%d",relations[i].for_attr_locs[j]);
+				printf("'%s'",tcat->attributes[relations[i].for_attr_locs[j]].name);
 			}else{
-				printf("%d, ",relations[i].for_attr_locs[j]);
-			}
-		}
-		printf("]\n");
-	}
-}
-
-void pretty_print_unique_tuples( unique* tuples, int size ){
-	for(int i = 0; i<size; i++){
-		printf("\t(");
-		for(int j = 0; j<tuples[i].tup_size; j++){
-			if(j == tuples[i].tup_size-1){
-				printf("%d", tuples[i].attr_tuple[j]);
-			}else{
-				printf("%d,", tuples[i].attr_tuple[j]);
+				printf("'%s', ",tcat->attributes[relations[i].for_attr_locs[j]].name);
 			}
 		}
 		printf(")\n");
 	}
 }
 
-void pretty_print_primary_tuples( int* prim_tup, int size ){
-	printf("Primary Key: [");
+void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size ){
+	for(int i = 0; i<size; i++){
+		if( tuples[i].deleted ){continue;}
+		printf("\t( ");
+		for(int j = 0; j<tuples[i].tup_size; j++){
+			if(j == tuples[i].tup_size-1){
+				printf("'%s'", tcat->attributes[tuples[i].attr_tuple[j]].name);
+			}else{
+				printf("'%s',", tcat->attributes[tuples[i].attr_tuple[j]].name);
+			}
+		}
+		printf(" )\n");
+	}
+}
+
+void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size ){
+	printf("Primary Key: [ ");
 	for( int i = 0; i<size; i++ ){
 		if( i == size-1){
-			printf("%d", prim_tup[i]);
+			printf("'%s'", tcat->attributes[prim_tup[i]].name);
+		}else{
+			printf("'%s', ", tcat->attributes[prim_tup[i]].name);
 		}
-		printf("%d, ", prim_tup[i]);
 	}
-	printf("]\n");
+	printf(" ]\n");
 }
