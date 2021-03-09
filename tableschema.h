@@ -70,6 +70,7 @@ typedef struct table_catalog_array{
 
 // Helper Functions 
 int type_conversion(char* type);  //   --> GOOD
+char *type_string( int type );  //   --> GOOD
 int get_table_count_no_deletes(catalogs* logs);    //   --> GOOD
 int get_attribute_count_no_deletes(table_catalog* t_cat);    //   --> GOOD
 int get_relation_count_no_deletes(table_catalog* tcat);    //   --> GOOD
@@ -81,6 +82,8 @@ void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int s
 void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size );    //   --> GOOD
 void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size );    //   --> GOOD
 char *get_attr_name( catalogs* logs, char *table_name, int attr_id );    //   --> GOOD
+int* get_table_data_types( table_catalog* tcat );    //   --> GOOD
+void delete_table( table_catalog* tcat );    //   --> GOOD
 
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD

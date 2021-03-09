@@ -779,6 +779,35 @@ int type_conversion(char* type){
 }
 
 /*
+ * Convert the integer type to the corresponding
+ * string representation and return it.
+ */
+char *type_string( int type ){
+	char *res;
+	int size = 0;
+	switch( type ){
+		case 0: // int
+			res = "integer\0";
+			break;
+		case 1: // double
+			res = "double\0";
+			break;
+		case 2: // bool
+			res = "boolean\0";
+			break;
+		case 3: // char
+			res = "char\0";
+			break;
+		case 4: // varchar
+			res = "varchar\0";
+			break;
+		default:
+			res = "UNKNOWN\0";
+	}
+	return res;
+}
+
+/*
  * Loop through all the table catalogs and check for the deleted
  * flag is true and then increment the count.
  * Return count of tables that aren't delted other return 0.
@@ -847,6 +876,25 @@ char *get_attr_name( catalogs* logs, char *table_name, int attr_id ){
 }
 
 /*
+ * Return the data types of the table, the user is responsible
+ * for freeing the returning pointer.
+ */
+int* get_table_data_types( table_catalog* tcat ){
+	int *data_types = (int *)malloc(tcat->attribute_count*sizeof(int));
+	for( int i = 0; i<tcat->attribute_count; i++ ){
+		data_types[i] = tcat->attributes[i].type;
+	}
+	return data_types;
+}
+
+/*
+ * Mark the table as deleted.
+ */
+void delete_table( table_catalog* tcat ){
+	tcat->deleted = true;
+}
+
+/*
  * Print Catalog information including deletions to stdout.
  */
 void pretty_print_catalogs(catalogs* logs){
@@ -879,9 +927,9 @@ void pretty_print_table(table_catalog* tcat){
 
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
-		// TODO: switch type to string
-		printf("\tName: '%s' --> attr_id: %d, type: %d, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, i, attributes[i].type, attributes[i].deleted ? 1 : 0,
+		char* str_type = type_string( attributes[i].type );
+		printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+			attributes[i].name, i, str_type, attributes[i].deleted ? 1 : 0,
 			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
 	}
 }

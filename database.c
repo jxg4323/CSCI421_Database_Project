@@ -108,11 +108,18 @@ int main(int argc, char const *argv[])
 
 	printf("-------NEW FUNCTIONS---------\n");
 	printf("%s primary key attribute is %s\n", logs->all_tables[0].table_name, get_attr_name( logs, logs->all_tables[0].table_name, 0));
-	
+	int *tmp = get_table_data_types( &(logs->all_tables[0]) );
+	printf("first_table data_types: [");
+	for( int i = 0; i<logs->all_tables[0].attribute_count; i++){
+		printf("%d, ", tmp[i]);
+	}
+	printf("]\n");
+	free( tmp );
+
 	char** temp = (char **)malloc(26*sizeof(char));
 	temp[0] = "create\0";
 	temp[1] = "table\0";
-	temp[2] = "first\0";
+	temp[2] = "Third\0";
 	temp[3] = "\0";
 	temp[4] = "ID\0";
 	temp[5] = "integer\0";
@@ -138,19 +145,31 @@ int main(int argc, char const *argv[])
 	temp[25] = "\0";
 
 	create_table( logs, 26, temp );
-
+	drop_table_ddl( logs, "Third" );
 	pretty_print_catalogs( logs );
 
 	free( temp );
 	return 0;
 }
 
-
+/*
+ * Loop through the provided tokens, and create the table catalog
+ * and initialize the table metadata for the storagemanager.
+ * @param cat - array of table_catalog structures
+ * @param token_count - number of tokens given
+ * @param tokens - array of tokens that should have already been
+ 				   been validated by the parser and between each
+ 				   command is an empty string.
+ * @return the metadata id of the table if successful and -1 o.w.
+ */
 int create_table( catalogs *cat, int token_count, char** tokens ){
     int current = 2;
     bool valid = true;
     // return -1 if name is in use
-    if( check_table_name(cat, tokens[current]) ){ return -1; }
+    if( check_table_name(cat, tokens[current]) ){ 
+    	fprintf(stderr, "ERROR: table %s already exists\n", tokens[current] );
+    	return -1; 
+    }
     int table_index = cat->table_count;
     manage_catalogs(cat, cat->table_count+1, true);
     init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
@@ -171,7 +190,6 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_primary_key(&(cat->all_tables[table_index]), prims, prim_count);
             if(added == -1){
                 valid = false;
-                cat->all_tables[table_index].deleted = true;
             }
             current++;
             for( int i = 0; i < prim_count; i++ ){
@@ -193,7 +211,6 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_unique_key(&(cat->all_tables[table_index]), uniques, uniq_count);
             if(added == -1){
                 valid = false;
-                cat->all_tables[table_index].deleted = true;
             }
             current++;
             for( int i = 0; i < uniq_count; i++ ){
@@ -227,7 +244,6 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
             if(added == -1){
                 valid = false;
-                cat->all_tables[table_index].deleted = true;
             }
             current++;
             for( int i = 0; i < foreign_count; i++ ){
@@ -249,7 +265,6 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                     constraints[2] = 1;
                     current++;
                 } else {
-                    cat->all_tables[table_index].deleted = 1;
                     valid = false;
                 }
             }
@@ -258,24 +273,37 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                 added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints);
             }
             if(added == -1){
-                cat->all_tables[table_index].deleted = 1;
                 valid = false;
             }
             current++;
         }
     }
     if( valid == false ){
+    	delete_table( &(cat->all_tables[table_index]) );
         return -1;
     } else {
-        return 1;
+    	int* data_types = get_table_data_types( &(cat->all_tables[table_index]) );
+    	int num_types = cat->all_tables[table_index].attribute_count;
+    	int num_keys = cat->all_tables[table_index].primary_size;
+    	int meta_id = add_table( data_types, cat->all_tables[table_index].primary_tuple, num_types, num_keys );
+    	if( meta_id == -1 ){
+    		fprintf(stderr, "ERROR: unable to add table %s to metadata file.\n", cat->all_tables[table_index].table_name );
+    		delete_table( &(cat->all_tables[table_index]) );
+    		return -1;
+    	}
+    	free( data_types );
+        return meta_id;
     }
 }
 
 int drop_table_ddl( catalogs *cat, char *name ){
     int idx = get_catalog(cat, name);
-    if( idx == -1 ){ return idx; }
+    if( idx == -1 ){
+    	fprintf(stderr, "ERROR: attempted to drop an unknown table %s\n", name);
+    	return idx; 
+    }
     int success = drop_table( cat->all_tables[idx].id );
     if( success == -1 ){ return success; }
-    cat->all_tables[idx].deleted = true;
+    delete_table( &(cat->all_tables[idx]) );
     return 1;
 }
