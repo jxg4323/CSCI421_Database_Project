@@ -769,7 +769,7 @@ void terminate_catalog(catalogs *logs){
 int type_conversion(char* type){
 	int result = -1;
 	char *temp = strdup(type);
-	char *token = strtok(temp, "\s+(");
+	char *token = strtok(temp, " \t\r\n(");
 	if( strcmp(type, INTEGER) == 0){ result = 0; }
 	else if( strcmp(type, DOUBLE) == 0){ result = 1; }
 	else if( strcmp(type, BOOLEAN) == 0){ result = 2; }

@@ -1,6 +1,10 @@
 
 #ifndef __DATABASE_H__
 #define __DATABASE_H__
+#define CREATE 1
+#define ALTER 2
+#define DROP 3
+
 
 #include "tableschema.h"
 

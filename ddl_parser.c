@@ -1,8 +1,6 @@
 #include "ddl_parser.h"
 #include "ddlparse.h"
 
-#include "string.h"
-
  /*
   * This function handles the parsing of DDL statments
   *
@@ -10,29 +8,29 @@
   * @return 0 on sucess; -1 on failure
   */
 int parse_ddl_statement( char * statement ){
-	// All Table names are unique !! --> has to be enforced
-
 	// Tokenize the command into sections with ',' then 
 	//	spaces & check token for keywords if not a digit
 	// Keywords to check for : 'primarykey', 'unique', 'foreignkey', 'references', 'notnull', 'integer', 'double', 'boolean', 'char(x)', 'varchar(x)'
 	// 
-
+    char *temp = strdup( statement );
+    char *command = strsep( &statement,DELIMITER );
 	// have switch statements checking for what the string starts with
 	// if the string starts with 'c' or 'C', we call the parse_create_statement(statement)
 	// else if the string starts with 'd' or 'D', we call the parse_drop_statement(statement)
 	// else if the string starts with 'a' or 'A', we call the parse_alter_statement(statement)
 	char ch = statement[0];
 
-	if (ch=='C' || ch=='c'){
+	if ( strcasecmp(command,"create") == 0 ){
 		return parse_create_statement(statement);
 	}
-	else if (ch=='D' || ch == 'd'){
+	else if ( strcasecmp(command,"drop") == 0 ){
 		return parse_drop_statement(statement);
 	}
-	else if (ch=='A' || ch=='a'){
+	else if ( strcasecmp(command,"alter") == 0 ){
 		return parse_alter_statement(statement);
 	}
 	else{
+        fprintf(stderr, "ERROR: command unknown %s\n", command);
 		return -1;
 	}
 }
@@ -43,10 +41,10 @@ int parse_ddl_statement( char * statement ){
   * @param statement - the create table statement to execute
   * @return 0 on sucess; -1 on failure
   */
-int parse_create_statement( char * statement ){
+int parse_create_statement( catalogs* cat, char * statement ){
  
-    // data is a 2d array of strings
-  	char *data[100];
+    // allow for 100 strings as base
+    char **data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
   	int i=0;
 
     char *end_str;
@@ -54,20 +52,23 @@ int parse_create_statement( char * statement ){
 
     while (token != NULL)
     {
-        //printf("a = %s\n", token);
-        data[i] = (char *)malloc(20);
+        if ( i >= INIT_NUM_TOKENS ){
+            data = (char **)realloc( data, (i+1)*sizeof(char *) );
+        }
+        int str_len = strlen(token);
+        data[i] = (char *)malloc(str_len*sizeof(char));  // NOTE: might have to add 1 to alloc for '\0'
         strcpy(data[i], token);
         i++;
         token = strtok_r(NULL, " ", &end_str);
     }
 
-    //for (i = 0; i < 100; ++i){
-        //printf("%s\n", data[i]);
-        //free(data[i]);
-    //}
+    for (i = 0; i < 100; ++i){
+        free(data[i]);
+    }
+    free( data );
+	
 
-	// TODO:
-	// call the function create
+
     return 0;
 }
 
