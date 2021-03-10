@@ -1,8 +1,7 @@
 #include <string.h>
+#include <limits.h>
 #include "database1.h"
 #include "database.h"
-#include "tableschema.h"
-#include <limits.h>
 
 /*
  * This function will be used to execute SQL statements that
@@ -364,7 +363,6 @@ int drop_table_ddl( catalogs *cat, char *name ){
     int success = drop_table( cat->all_tables[idx].id );
     if( success == -1 ){ return success; }
     delete_table( &(cat->all_tables[idx]) );
-    cat->all_tables[idx].deleted = true;
     return 1;
 }
 
