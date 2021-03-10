@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#define DELIMITER " \t\r\n("
+#define DELIMITER " \t\r\n();,"
 #define INIT_NUM_TOKENS 100
 
 

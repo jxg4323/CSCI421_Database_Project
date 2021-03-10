@@ -201,6 +201,11 @@ int main(int argc, char const *argv[])
 	pretty_print_catalogs( logs );
 
 	free( temp );
+
+	char* statement = "create table fourth( \n ID integer notnull, \n primarykey (ID) \n);";
+
+	parse_ddl_statement( statement );
+
 	return 0;
 }
 

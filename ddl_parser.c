@@ -16,7 +16,7 @@ int parse_ddl_statement( char * statement ){
 	// Keywords to check for : 'primarykey', 'unique', 'foreignkey', 'references', 'notnull', 'integer', 'double', 'boolean', 'char(x)', 'varchar(x)'
 	// 
     char *temp = strdup( statement );
-    char *command = strsep( &statement,DELIMITER );
+    char *command = strsep( &temp,DELIMITER );
     // if logs empty then create new otherwise leave alone
 	if( logs == NULL ){
         logs = initialize_catalogs();
@@ -49,11 +49,12 @@ int parse_create_statement( char * statement ){
     // allow for 100 strings as base
     char **data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
   	int i=0, total=1;
+    char *temp = strdup( statement );
 
-    char *end_str;
-    char *token = strtok_r(statement, " ", &end_str);
+    char *end_str = temp;
+    char *token;
 
-    while (token != NULL)
+    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
     {
         if ( i >= INIT_NUM_TOKENS ){
             data = (char **)realloc( data, total*sizeof(char *) );
@@ -62,7 +63,6 @@ int parse_create_statement( char * statement ){
         data[i] = (char *)malloc(str_len*sizeof(char));  // NOTE: might have to add 1 to alloc for '\0'
         strcpy(data[i], token);
         i++, total++;
-        token = strtok_r(NULL, " ", &end_str);
     }
 
     for (i = 0; i < total; i++){
@@ -70,7 +70,7 @@ int parse_create_statement( char * statement ){
     }
     free( data );
 	
-    create_table( logs, total, data );
+    create_table( logs, total, data ); // seg fault here
 
     return 0;
 }
