@@ -172,3 +172,152 @@ int drop_table_ddl( catalogs *cat, char *name ){
     cat->all_tables[idx].deleted = 1;
     return 1;
 }
+
+int alter_table(catalogs *cat, int token_count, char **tokens){
+    if(token_count != 5 && token_count != 6 && token_count != 8) {
+        fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
+        return -1;
+    }
+    if(strcmp(tokens[2], "add"){
+        if(token_count == 8){
+            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[7]);
+        } else {
+            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], null);
+        }
+    }
+
+}
+
+int drop_attribute(catalogs *cat, char *table, char *attribute){
+    int table_loc = get_catalog(cat, table);
+    if( table_loc == -1 ){
+        return -1;
+    }
+    int success = remove_attribute(cat, &(cat->all_tables[table_loc]), attribute);
+    if( success == -1 ){
+        return -1;
+    }
+    union record_item **records;
+    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    if( rec_count == -1 ){
+        return -1;
+    }
+    int attribute_position = 0; //TODO: add a method to get the position of the attribute in the array of attributes
+    success = drop_table(cat->all_tables[table_loc].id);
+    if( success == -1 ){
+        return -1;
+    }
+    int new_attr_count = get_attribute_count_no_deletes(&(cat->all_tables[table_loc]));
+    int *data_types = malloc(sizeof(int) * new_attr_count);
+    int position = 0;
+    for(int i = 0; i < new_attr_count;;){
+        if(cat->all_tables[table_loc].attributes[position].deleted != 1){
+            data_types[i] = cat->all_tables[table_loc].attributes[position].type;
+            i++;
+        }
+        position++;
+    }
+    int prim_count = cat->all_tables[table_loc].primary_size;
+    int *prim_indices = malloc(sizeof(int) * prim_count); //TODO: convert the prim tuple to an array of prim key indices
+    int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
+    if( new_id == -1 ){
+        return -1;
+    }
+    cat->all_tables[table_loc].id = new_id;
+    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    for(int i = 0; i < rec_count; i++){
+        int offset = 0;
+        for(int j = 0; j < new_attr_count + 1; j++){
+            if(j == attribute_position){
+                offset = 1;
+            } else {
+                record[j - offset] = records[i][j];
+            }
+        }
+        insert_record(new_id, record);
+    }
+    free(record);
+    free(data_types);
+    free(prim_indices);
+    //TODO: free the 2d record array from get_records
+    for(int i = 0; i < rec_count; i++){
+
+    }
+    return 1;
+}
+
+int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char *value){
+    int table_loc = get_catalog(cat, table);
+    if( table_loc == -1 ){
+        return -1;
+    }
+    union record_item **records;
+    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    if( rec_count == -1 ){
+        return -1;
+    }
+    int constraints[3] = { 0 };
+    int success = add_attribute(&(cat->all_tables[table_loc]),name,type,constraints);
+    if( success == -1 ){
+        return -1;
+    }
+    success = drop_table(cat->all_tables[table_loc].id);
+    if( success == -1 ){
+        return -1;
+    }
+    int new_attr_count = get_attribute_count_no_deletes(&(cat->all_tables[table_loc]));
+    int *data_types = malloc(sizeof(int) * new_attr_count);
+    int position = 0;
+    for(int i = 0; i < new_attr_count;;){
+        if(cat->all_tables[table_loc].attributes[position].deleted != 1){
+            data_types[i] = cat->all_tables[table_loc].attributes[position].type;
+            i++;
+        }
+        position++;
+    }
+    int prim_count = cat->all_tables[table_loc].primary_size;
+    int *prim_indices = malloc(sizeof(int) * prim_count); //TODO: convert the prim tuple to an array of prim key indices
+    int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
+    if( new_id == -1 ){
+        return -1;
+    }
+    cat->all_tables[table_loc].id = new_id;
+    int type_int = type_conversion(type);
+    union record_item new_record;
+    if(value == null){
+        new_record.d = DOUBLE_MIN;
+    } else if(type_int == 0){
+        new_record.i = atoi(value);
+    } else if(type_int == 1){
+        new_record.d = atod(value);
+    } else if(type_int == 2){
+        if(strcmp(value, "true") == 0){
+            new_record.b = true;
+        } else {
+            new_record.b = false;
+        }
+    } else if(type_int == 3){
+        new_record.c = value;
+    } else if(type_int == 4){
+        new_record.v = value;
+    }
+    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    for(int i = 0; i < rec_count; i++){
+        for(int j = 0; j < new_attr_count; j++){
+            if(j == new_attr_count - 1;){
+                record[j] = new_record;
+            } else {
+                record[j] = records[i][j];
+            }
+        }
+        insert_record(new_id, record);
+    }
+    free(record);
+    free(data_types);
+    free(prim_indices);
+    //TODO: free the 2d record array from get_records
+    for(int i = 0; i < rec_count; i++){
+
+    }
+    return 1;
+}
