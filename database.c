@@ -2,6 +2,7 @@
 #include "database1.h"
 #include "database.h"
 #include "tableschema.h"
+#include <limits.h>
 
 /*
  * This function will be used to execute SQL statements that
@@ -73,7 +74,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             current++;
             char ** prims = malloc(sizeof(char *));
             int prim_count = 0;
-            while(strcmp(tokens[current], ",") != 0){
+            while(strcmp(tokens[current], "") != 0){
                 prim_count++;
                 realloc(prims, prim_count * sizeof(char *));
                 strcpy(prims[prim_count-1], tokens[current]);
@@ -82,14 +83,14 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_primary_key(&(cat->all_tables[table_index]), prims, prim_count);
             if(added == -1){
                 validity = false;
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
             }
             current++;
         } else if(strcmp(tokens[current], "unique") == 0){
             current++;
             char ** uniques = malloc(sizeof(char *));
             int uniq_count = 0;
-            while(strcmp(tokens[current], ",") != 0){
+            while(strcmp(tokens[current], "") != 0){
                 uniq_count++;
                 realloc(uniques, uniq_count * sizeof(char *));
                 strcpy(uniques[uniq_count-1], tokens[current]);
@@ -98,7 +99,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_unique_key(&(cat->all_tables[table_index]), uniques, uniq_count);
             if(added == -1){
                 validity = false;
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
             }
             current++;
         } else if(strcmp(tokens[current], "foreignkey") == 0){
@@ -115,7 +116,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             }
             current++;
             strcpy(foreigns[0], tokens[current]);
-            while(strcmp(tokens[current], ",") != 0){
+            while(strcmp(tokens[current], "") != 0){
                 foreign_count++;
                 realloc(foreigns, foreign_count * sizeof(char *));
                 strcpy(foreigns[foreign_count-1], tokens[current]);
@@ -124,14 +125,14 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
             if(added == -1){
                 validity = false;
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
             }
             current++;
         } else {
             int name_idx = current++;
             int type_idx = current++;
             int constraints[3] = { 0 };
-            while(strcmp(tokens[current], ",") != 0 && validity != false){
+            while(strcmp(tokens[current], "") != 0 && validity != false){
                 if(strcmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
                     current++;
@@ -142,7 +143,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                     constraints[2] = 1;
                     current++;
                 } else {
-                    cat->all_tables[table_index].deleted = 1;
+                    cat->all_tables[table_index].deleted = true;
                     validity = false;
                 }
             }
@@ -151,7 +152,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                 added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints);
             }
             if(added == -1){
-                cat->all_tables[table_index].deleted = 1;
+                cat->all_tables[table_index].deleted = true;
                 validity = false;
             }
             current++;
@@ -169,7 +170,7 @@ int drop_table_ddl( catalogs *cat, char *name ){
     if( idx == -1 ){ return idx; }
     int success = drop_table( cat->all_tables[idx].id );
     if( success == -1 ){ return success; }
-    cat->all_tables[idx].deleted = 1;
+    cat->all_tables[idx].deleted = true;
     return 1;
 }
 
@@ -193,6 +194,14 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     if( table_loc == -1 ){
         return -1;
     }
+    int attribute_loc = get_attr_loc(&(cat->all_tables[table_loc]), attribute);
+    if( attribute_loc == -1 ){
+        return -1;
+    }
+    int attribute_position = get_attr_idx(&(cat->all_tables[table_loc]), attribute_loc);
+    if( attribute_position == -1 ){
+        return -1;
+    }
     int success = remove_attribute(cat, &(cat->all_tables[table_loc]), attribute);
     if( success == -1 ){
         return -1;
@@ -202,7 +211,6 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     if( rec_count == -1 ){
         return -1;
     }
-    int attribute_position = 0; //TODO: add a method to get the position of the attribute in the array of attributes
     success = drop_table(cat->all_tables[table_loc].id);
     if( success == -1 ){
         return -1;
@@ -211,14 +219,17 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     int *data_types = malloc(sizeof(int) * new_attr_count);
     int position = 0;
     for(int i = 0; i < new_attr_count;;){
-        if(cat->all_tables[table_loc].attributes[position].deleted != 1){
+        if(cat->all_tables[table_loc].attributes[position].deleted == false){
             data_types[i] = cat->all_tables[table_loc].attributes[position].type;
             i++;
         }
         position++;
     }
     int prim_count = cat->all_tables[table_loc].primary_size;
-    int *prim_indices = malloc(sizeof(int) * prim_count); //TODO: convert the prim tuple to an array of prim key indices
+    int *prim_indices = malloc(sizeof(int) * prim_count);
+    for(int i = 0; i < prim_count; i++){
+        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i])
+    }
     int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
     if( new_id == -1 ){
         return -1;
@@ -239,14 +250,17 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     free(record);
     free(data_types);
     free(prim_indices);
-    //TODO: free the 2d record array from get_records
     for(int i = 0; i < rec_count; i++){
-
+        free(&(records[i]));
     }
+    free(records);
     return 1;
 }
 
 int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char *value){
+    if(get_attr_loc(cat, name) != -1){
+        return -1;
+    }
     int table_loc = get_catalog(cat, table);
     if( table_loc == -1 ){
         return -1;
@@ -269,14 +283,17 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     int *data_types = malloc(sizeof(int) * new_attr_count);
     int position = 0;
     for(int i = 0; i < new_attr_count;;){
-        if(cat->all_tables[table_loc].attributes[position].deleted != 1){
+        if(cat->all_tables[table_loc].attributes[position].deleted == false){
             data_types[i] = cat->all_tables[table_loc].attributes[position].type;
             i++;
         }
         position++;
     }
     int prim_count = cat->all_tables[table_loc].primary_size;
-    int *prim_indices = malloc(sizeof(int) * prim_count); //TODO: convert the prim tuple to an array of prim key indices
+    int *prim_indices = malloc(sizeof(int) * prim_count);
+    for(int i = 0; i < prim_count; i++){
+        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i])
+    }
     int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
     if( new_id == -1 ){
         return -1;
@@ -297,9 +314,9 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
             new_record.b = false;
         }
     } else if(type_int == 3){
-        new_record.c = value;
+        memcpy(new_record, value, strlen(value));
     } else if(type_int == 4){
-        new_record.v = value;
+        memcpy(new_record, value, strlen(value));
     }
     union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
     for(int i = 0; i < rec_count; i++){
@@ -315,9 +332,9 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     free(record);
     free(data_types);
     free(prim_indices);
-    //TODO: free the 2d record array from get_records
     for(int i = 0; i < rec_count; i++){
-
+        free(&(records[i]));
     }
+    free(records);
     return 1;
 }
