@@ -3,7 +3,7 @@
 
 // stores catalog information about tables
 static catalogs* logs = NULL;
-
+// TODO: add terminate parser
  /*
   * This function handles the parsing of DDL statments
   *
@@ -20,6 +20,7 @@ int parse_ddl_statement( char * statement ){
     // if logs empty then create new otherwise leave alone
 	if( logs == NULL ){
         logs = initialize_catalogs();
+        manage_catalogs( logs, 0, false );
     }
 
     // switch statements checking for what the string starts with
@@ -59,19 +60,20 @@ int parse_create_statement( char * statement ){
         if ( i >= INIT_NUM_TOKENS ){
             data = (char **)realloc( data, total*sizeof(char *) );
         }
+        // TODO: add empty string check when comma
         int str_len = strlen(token);
         data[i] = (char *)malloc(str_len*sizeof(char));  // NOTE: might have to add 1 to alloc for '\0'
         strcpy(data[i], token);
         i++, total++;
     }
 
+    create_table( logs, total, data ); // seg fault here
+
     for (i = 0; i < total; i++){
         free(data[i]);
     }
     free( data );
 	
-    create_table( logs, total, data ); // seg fault here
-
     return 0;
 }
 
@@ -124,64 +126,6 @@ int parse_alter_statement( char * statement ){
     return 0;
 }
 
-char *str_replace(char *orig, char *rep, char *with) {
-    char *result; // the return string
-    char *ins;    // the next insert point
-    char *tmp;    // varies
-    int len_rep;  // length of rep (the string to remove)
-    int len_with; // length of with (the string to replace rep with)
-    int len_front; // distance between rep and end of last rep
-    int count;    // number of replacements
-
-    // sanity checks and initialization
-    if (!orig || !rep)
-        return NULL;
-    len_rep = strlen(rep);
-    if (len_rep == 0)
-        return NULL; // empty rep causes infinite loop during count
-    if (!with)
-        with = "";
-    len_with = strlen(with);
-
-    // count the number of replacements needed
-    ins = orig;
-    for (count = 0; tmp = strstr(ins, rep); ++count) {
-        ins = tmp + len_rep;
-    }
-
-    tmp = result = malloc(strlen(orig) + (len_with - len_rep) * count + 1);
-
-    if (!result)
-        return NULL;
-
-    // first time through the loop, all the variable are set correctly
-    // from here on,
-    //    tmp points to the end of the result string
-    //    ins points to the next occurrence of rep in orig
-    //    orig points to the remainder of orig after "end of rep"
-    while (count--) {
-        ins = strstr(orig, rep);
-        len_front = ins - orig;
-        tmp = strncpy(tmp, orig, len_front) + len_front;
-        tmp = strcpy(tmp, with) + len_with;
-        orig += len_front + len_rep; // move to next "end of rep"
-    }
-    strcpy(tmp, orig);
-    return result;
-}
-
-
-int check_statement( char * statement ){
-	// check validity of structure of statement
-	// Parse string and confirm the layout of Create/Alter/Drop
-	// 		match the specified latyout
-	// Create
-		// 'create table <name>(
-		// <a_name> <a_type> <constraint_1> ... <constraint_N>'
-		// primarykey( <a_1> ... <a_N>),
-		// unique( ( <a_1> ... <a_N>),
-		// foreignkey( <a_1> ... <a_N> ) references <r_name>( <r_1> ... <r_N>)
-		// );
-	// Drop
-	// Alter
+void terminate_logs( ){
+    terminate_catalog( logs );
 }

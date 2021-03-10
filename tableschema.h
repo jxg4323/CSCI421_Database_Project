@@ -41,6 +41,8 @@ typedef struct attribute_info{
     char *name;
     int type;
     bool deleted; // DON'T STORE --> if True then don't write
+    // TODO: add default value --> Maybe??
+    // TODO: maybe add char & varch len
     // Constraints stored as 0 or 1  --> if 1 then constrain is in use
     int notnull; 
     int primarykey;
