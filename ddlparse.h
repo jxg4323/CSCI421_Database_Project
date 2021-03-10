@@ -13,6 +13,8 @@
 
 int check_statement( char * statement );
 
-int parse_create_statement( catalogs* cat, char * statement );
+int parse_create_statement( char * statement );
+int parse_drop_statement( char * statement );
+int parse_alter_statement( char * statement );
 
 #endif

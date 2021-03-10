@@ -1,6 +1,9 @@
 #include "ddl_parser.h"
 #include "ddlparse.h"
 
+// stores catalog information about tables
+static catalogs* logs = NULL;
+
  /*
   * This function handles the parsing of DDL statments
   *
@@ -14,12 +17,12 @@ int parse_ddl_statement( char * statement ){
 	// 
     char *temp = strdup( statement );
     char *command = strsep( &statement,DELIMITER );
-	// have switch statements checking for what the string starts with
-	// if the string starts with 'c' or 'C', we call the parse_create_statement(statement)
-	// else if the string starts with 'd' or 'D', we call the parse_drop_statement(statement)
-	// else if the string starts with 'a' or 'A', we call the parse_alter_statement(statement)
-	char ch = statement[0];
+    // if logs empty then create new otherwise leave alone
+	if( logs == NULL ){
+        logs = initialize_catalogs();
+    }
 
+    // switch statements checking for what the string starts with
 	if ( strcasecmp(command,"create") == 0 ){
 		return parse_create_statement(statement);
 	}
@@ -41,11 +44,11 @@ int parse_ddl_statement( char * statement ){
   * @param statement - the create table statement to execute
   * @return 0 on sucess; -1 on failure
   */
-int parse_create_statement( catalogs* cat, char * statement ){
+int parse_create_statement( char * statement ){
  
     // allow for 100 strings as base
     char **data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
-  	int i=0;
+  	int i=0, total=1;
 
     char *end_str;
     char *token = strtok_r(statement, " ", &end_str);
@@ -53,21 +56,21 @@ int parse_create_statement( catalogs* cat, char * statement ){
     while (token != NULL)
     {
         if ( i >= INIT_NUM_TOKENS ){
-            data = (char **)realloc( data, (i+1)*sizeof(char *) );
+            data = (char **)realloc( data, total*sizeof(char *) );
         }
         int str_len = strlen(token);
         data[i] = (char *)malloc(str_len*sizeof(char));  // NOTE: might have to add 1 to alloc for '\0'
         strcpy(data[i], token);
-        i++;
+        i++, total++;
         token = strtok_r(NULL, " ", &end_str);
     }
 
-    for (i = 0; i < 100; ++i){
+    for (i = 0; i < total; i++){
         free(data[i]);
     }
     free( data );
 	
-
+    create_table( logs, total, data );
 
     return 0;
 }
