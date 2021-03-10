@@ -3,7 +3,6 @@
 
 // stores catalog information about tables
 static catalogs* logs = NULL;
-// TODO: add terminate parser
  /*
   * This function handles the parsing of DDL statments
   *
