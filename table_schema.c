@@ -647,6 +647,7 @@ int get_attr_loc(table_catalog *tcat, char *attr_name){
 bool check_table_name(catalogs *logs, char *tname){
 	bool in_use = false;
 	for( int i = 0; i<logs->table_count; i++ ){
+		if( logs->all_tables[i].deleted ){ continue; } // deleted tables don't count
 		if( strcmp(logs->all_tables[i].table_name, tname) == 0 ){ in_use = true; }
 	}
 	return in_use;
@@ -768,13 +769,42 @@ void terminate_catalog(catalogs *logs){
 int type_conversion(char* type){
 	int result = -1;
 	char *temp = strdup(type);
-	char *token = strtok(temp, "\s+(");
+	char *token = strtok(temp, " \t\r\n(");
 	if( strcmp(type, INTEGER) == 0){ result = 0; }
 	else if( strcmp(type, DOUBLE) == 0){ result = 1; }
 	else if( strcmp(type, BOOLEAN) == 0){ result = 2; }
 	else if( strcmp(type, CHAR) == 0){ result = 3; }
 	else if( strcmp(type, VARCHAR) == 0){ result = 4; }
 	return result;
+}
+
+/*
+ * Convert the integer type to the corresponding
+ * string representation and return it.
+ */
+char *type_string( int type ){
+	char *res;
+	int size = 0;
+	switch( type ){
+		case 0: // int
+			res = "integer\0";
+			break;
+		case 1: // double
+			res = "double\0";
+			break;
+		case 2: // bool
+			res = "boolean\0";
+			break;
+		case 3: // char
+			res = "char\0";
+			break;
+		case 4: // varchar
+			res = "varchar\0";
+			break;
+		default:
+			res = "UNKNOWN\0";
+	}
+	return res;
 }
 
 /*
@@ -846,6 +876,25 @@ char *get_attr_name( catalogs* logs, char *table_name, int attr_id ){
 }
 
 /*
+ * Return the data types of the table, the user is responsible
+ * for freeing the returning pointer.
+ */
+int* get_table_data_types( table_catalog* tcat ){
+	int *data_types = (int *)malloc(tcat->attribute_count*sizeof(int));
+	for( int i = 0; i<tcat->attribute_count; i++ ){
+		data_types[i] = tcat->attributes[i].type;
+	}
+	return data_types;
+}
+
+/*
+ * Mark the table as deleted.
+ */
+void delete_table( table_catalog* tcat ){
+	tcat->deleted = true;
+}
+
+/*
  * Print Catalog information including deletions to stdout.
  */
 void pretty_print_catalogs(catalogs* logs){
@@ -878,8 +927,9 @@ void pretty_print_table(table_catalog* tcat){
 
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
-		printf("\tName: '%s' --> attr_id: %d, type: %d, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, i, attributes[i].type, attributes[i].deleted ? 1 : 0,
+		char* str_type = type_string( attributes[i].type );
+		printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+			attributes[i].name, i, str_type, attributes[i].deleted ? 1 : 0,
 			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
 	}
 }
