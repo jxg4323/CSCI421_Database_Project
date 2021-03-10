@@ -2,10 +2,11 @@
 #ifndef __TABLESCHEMA_H__
 #define __TABLESCHEMA_H__
 // Tables Schema Catalog Data
-// TODO: might have to create another one separate
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h> 
+#include <string.h>
 #define TABLE_CATALOG_FILE "table_catalog"
 #define TABLE_CATALOG_FILE_LEN 14
 #define NOTNULL 6
@@ -40,6 +41,8 @@ typedef struct attribute_info{
     char *name;
     int type;
     bool deleted; // DON'T STORE --> if True then don't write
+    // TODO: add default value --> Maybe??
+    // TODO: maybe add char & varch len
     // Constraints stored as 0 or 1  --> if 1 then constrain is in use
     int notnull; 
     int primarykey;
@@ -67,58 +70,62 @@ typedef struct table_catalog_array{
     table_catalog *all_tables;
 } catalogs;
 
-// Helper Functions
-int type_conversion(char* type);
-int get_table_count_no_deletes(catalogs* logs);
-int get_attribute_count_no_deletes(table_catalog* t_cat);
-int get_relation_count_no_deletes(table_catalog* tcat);
-int get_unique_count_no_deletes(table_catalog* tcat);
-void pretty_print_catalogs(catalogs* logs);
-void pretty_print_table(table_catalog* tcat);
-void pretty_print_attributes( attr_info* attributes, int size );
-void pretty_print_relations( foreign_data* relations, int size );
-void pretty_print_unique_tuples( unique* tuples, int size );
-void pretty_print_primary_tuples( int* prim_tup, int size );
+// Helper Functions 
+int type_conversion(char* type);  //   --> GOOD
+char *type_string( int type );  //   --> GOOD
+int get_table_count_no_deletes(catalogs* logs);    //   --> GOOD
+int get_attribute_count_no_deletes(table_catalog* t_cat);    //   --> GOOD
+int get_relation_count_no_deletes(table_catalog* tcat);    //   --> GOOD
+int get_unique_count_no_deletes(table_catalog* tcat);    //   --> GOOD
+void pretty_print_catalogs(catalogs* logs);    //   --> GOOD
+void pretty_print_table(table_catalog* tcat);    //   --> GOOD
+void pretty_print_attributes( attr_info* attributes, int size );    //   --> GOOD
+void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size );    //   --> GOOD
+void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size );    //   --> GOOD
+void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size );    //   --> GOOD
+char *get_attr_name( catalogs* logs, char *table_name, int attr_id );    //   --> GOOD
+int* get_table_data_types( table_catalog* tcat );    //   --> GOOD
+void delete_table( table_catalog* tcat );    //   --> GOOD
 
 // Catalog Functions
-catalogs* initialize_catalogs();
-void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name);
-void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);
-void init_foreign_relation(foreign_data* fdata, int fid, int size, int *orig_attrs, int *for_attrs);
-void init_unique_tuple(unique* udata, int tup_size, int *tuple);
-void init_primary_tuple(table_catalog *t_cat, int *tuple, int size);
+catalogs* initialize_catalogs();  //   --> GOOD
+void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
+void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);  //   --> GOOD
+void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs);   //   --> GOOD
+void init_unique_tuple(unique* udata, int tup_size, int *tuple);   //   --> GOOD
+void init_primary_tuple(table_catalog *t_cat, int *tuple, int size);  //   --> GOOD
 
 // Manage functions increase sizes of corresponding dynamic arrays
-void manage_catalogs(catalogs *logs, int table_count, bool increase);
-void manage_attributes(table_catalog* t_cat, int attr_count, bool increase);
-void manage_foreign_rels(table_catalog *t_cat, int rel_count, bool increase);
-void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase);
-void manage_unique_tuple(table_catalog *t_cat, int size, bool increase);
+void manage_catalogs(catalogs *logs, int table_count, bool increase);  //   --> GOOD
+void manage_attributes(table_catalog* t_cat, int attr_count, bool increase);  //   --> GOOD
+void manage_foreign_rels(table_catalog *t_cat, int rel_count, bool increase);   //   --> GOOD
+void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase);  //   --> GOOD
+void manage_unique_tuple(table_catalog *t_cat, int size, bool increase);  //   --> GOOD
 
 // Read And Write Catalogs
-int read_catalogs(char *db_loc, catalogs* logs);
-int write_catalogs(char *db_loc, catalogs* logs);
+int read_catalogs(char *db_loc, catalogs* logs);    //   --> GOOD
+int write_catalogs(char *db_loc, catalogs* logs);    //   --> GOOD
 
 // Manage Catalog Functions
 /*
- * Create new table catalog with just table name and newly allocated structure
+ * Create new table catalog with just table name and newly allocated structure 
  * Return location of new catalog in array if success otherwise -1.
  */
-int new_catalog(catalogs *logs, char *table_name); 
+int new_catalog(catalogs *logs, char *table_name);    //   --> GOOD
 
 /*
- * Add attribute information to the given table, and increment the attribute
+ * Add attribute information to the given table, and increment the attribute 
  * count for the table. 
  * Return 1 for success and -1 for failure.
  */
-int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]);
+int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]);   //   --> GOOD
 
 /*
  * Mark an attribute as deleted in the attribute information matrix. If an 
  * attribute is marked as removed then don't write it to the disk.
  * Return 1 for success and -1 for failure.
  */
-int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name);
+int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name);   //   --> GOOD
 
 /*
  * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
@@ -128,7 +135,7 @@ int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name);
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
-int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count);
+int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count);   //   --> GOOD
 
 /*
  * The foreign row is the an array of tokens that are as follows:
@@ -137,7 +144,7 @@ int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, i
  * foreign relations. 
  * Return location of foreign_data in array if successful o.w. -1.
  */
-int remove_foreign_data(catalogs* logs, table_catalog* t_cat, char**foreign_row, int f_count);
+int remove_foreign_data(catalogs* logs, table_catalog* t_cat, char**foreign_row, int f_count);  //   --> GOOD
 
 /*
  * Loop through the attribute information in the table catalog and
@@ -148,26 +155,26 @@ int remove_foreign_data(catalogs* logs, table_catalog* t_cat, char**foreign_row,
  *
  * Return 1 with succesful upate and -1 otherwise.
  */
-int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys);
+int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys);  //   --> GOOD
 
 /*
  * Delete the primary key information from the table.
  * Return 1 with success and -1 otherwise.
  */
-int remove_primary_key(table_catalog* t_cat);
+int remove_primary_key(table_catalog* t_cat);  //   --> GOOD
 
 /*
  * Confirm no other unique tuples have the combination of attributes,
  * if so return -1 and print an error. Otherwise return 1.
  */
-int add_unique_key(table_catalog* t_cat, char **unique_name, int size);
+int add_unique_key(table_catalog* t_cat, char **unique_name, int size);   //   --> GOOD
 
 /*
  * Remove the unique tuple based on the tuple provided, find the tuple
  * that matches and remove it.
  * If successfull return 1 otherwise return -1.
  */
-int remove_unique_key(table_catalog* t_cat, char** unique_name, int size);
+int remove_unique_key(table_catalog* t_cat, char** unique_name, int size);    //   --> GOOD
 
 /*
  * Search through all catalog information to find the one with
@@ -184,14 +191,14 @@ int get_catalog(catalogs *logs, char *tname);
  * are unique.
  * Return pointer to the table catalog or NULL if there isn't one. 
  */
-table_catalog* get_catalog_p(catalogs* logs, char* tname);
+table_catalog* get_catalog_p(catalogs* logs, char* tname);  //   --> GOOD
 
 /*
  * Based on the table id retrieve the attribute location
  * in the table catalog.
  * Return location of attribute in table if found, o.w. -1.
  */
-int get_attr_loc(table_catalog *tcat, char *attr_name);
+int get_attr_loc(table_catalog *tcat, char *attr_name);  //   --> GOOD
 
 /*
  * Based on the table catalog and attribute location in the table catalog
@@ -203,7 +210,7 @@ int get_attr_idx(table_catalog *tcat, int attr_loc);
  * Check if the table name is already in use.
  * Return True if a table name is found, false otherwise.
  */
-bool check_table_name(catalogs *logs, char *tname);
+bool check_table_name(catalogs *logs, char *tname);  //   --> GOOD
 
 /*
  * Look through the primary key to see if the primary
@@ -233,6 +240,7 @@ int delete_uniq_tup( table_catalog* tcat, int attr_id );
 /*
  * Write catalog information to disk and free pointer.
  */
-void terminate_catalog(catalogs *logs);
+void terminate_catalog(catalogs *logs); //   --> GOOD
 
-#define __TABLESCHEMA_H__
+
+#endif
