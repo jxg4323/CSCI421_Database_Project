@@ -53,26 +53,49 @@ int parse_create_statement( char * statement ){
 
     char *end_str = temp;
     char *token;
-
+    //TODO: create char* delim & if quote is in next token use /" only in delim and then grab next token & reset delim back to normal
     while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
     {
-        if ( i >= INIT_NUM_TOKENS ){
-            data = (char **)realloc( data, total*sizeof(char *) );
+        // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
+        int comma_count = char_occur_count( token, ',' );
+        if( comma_count > 1 || token[0] == ',' ){
+            fprintf(stderr, "ERROR: statement provided had either too many commas or a misplaced comma before %s\n", end_str);
+            return -1;
         }
-        // TODO: add empty string check when comma
+        if ( i >= INIT_NUM_TOKENS ){
+            data = (char **)realloc( data, (total+1)*sizeof(char *) );
+        }
+        if( i == 3 ){ 
+            // add empty token after table name
+            data[i] = (char *)malloc(sizeof(char));
+            memset(data[i], '\0', sizeof(char));
+            i++, total++;
+        }
         int str_len = strlen(token);
-        data[i] = (char *)malloc(str_len*sizeof(char));  // NOTE: might have to add 1 to alloc for '\0'
-        strcpy(data[i], token);
+        data[i] = (char *)malloc(str_len*sizeof(char));
+        memset(data[i], '\0', str_len*sizeof(char));
+        if( token[str_len-1] == ',' ){
+            strncpy(data[i], token, str_len-1);
+            // add empty token after
+            data[i+1] = (char *)malloc(sizeof(char));
+            memset(data[i+1], '\0', sizeof(char));
+            i++, total++;
+        }else{
+            strcpy(data[i], token);
+        }
         i++, total++;
     }
+    // add empty token at end of data
+    data[i] = (char *)malloc(sizeof(char));
+    memset(data[i], '\0', sizeof(char));
 
-    create_table( logs, total, data ); // seg fault here
+    create_table( logs, total, data );
 
     for (i = 0; i < total; i++){
         free(data[i]);
     }
     free( data );
-	
+
     return 0;
 }
 
@@ -127,4 +150,38 @@ int parse_alter_statement( char * statement ){
 
 void terminate_logs( ){
     terminate_catalog( logs );
+}
+
+/*
+ * Count the number of occurences of the given character 
+ * @param c in the provided string and return the count.
+ * This function does NOT ignore case.
+ */
+int char_occur_count( char* str, char c ){
+    int str_len = strlen(str);
+    int occur = 0;
+    for( int i = 0; i < str_len; i++ ){
+        if( str[i] == c ){ occur++; } 
+    }
+    return occur;
+}
+
+void print_logs( ){
+    if( logs != NULL ){
+        pretty_print_catalogs( logs );
+    }else{
+        printf("{EMPTY}\n");
+    }
+}
+
+void print_tokens( char** tokens, int count ){
+    printf("{ ");
+    for( int i = 0; i<count; i++ ){
+        if( i== count-1){
+            printf("%s", tokens[i]);
+        }else{
+            printf("%s, ", tokens[i]);
+        }
+    }
+    printf("}\n");
 }

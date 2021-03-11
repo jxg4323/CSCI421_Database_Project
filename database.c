@@ -198,13 +198,12 @@ int main(int argc, char const *argv[])
 
 	create_table( logs, 26, temp );
 	drop_table_ddl( logs, "Third" );
-	pretty_print_catalogs( logs );
 
 	free( temp );
 
 	char* statement = "create table fourth( \n ID integer notnull, \n primarykey (ID) \n);";
 
-	parse_ddl_statement( statement );
+	parse_ddl_statement( statement );	
 
 	return 0;
 }
