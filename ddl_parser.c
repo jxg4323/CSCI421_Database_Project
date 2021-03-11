@@ -40,10 +40,12 @@ int parse_ddl_statement( char * statement ){
 
 /*
  * This function handles the parsing of the create table statements.
- * *
-  * @param statement - the create table statement to execute
-  * @return 0 on sucess; -1 on failure
-  */
+ * 
+ * Doesn't allow default value tokens.
+ * 
+ * @param statement - the create table statement to execute
+ * @return 0 on sucess; -1 on failure
+ */
 int parse_create_statement( char * statement ){
  
     // allow for 100 strings as base
@@ -53,7 +55,6 @@ int parse_create_statement( char * statement ){
 
     char *end_str = temp;
     char *token;
-    //TODO: create char* delim & if quote is in next token use /" only in delim and then grab next token & reset delim back to normal
     while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
     {
         // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
@@ -96,6 +97,8 @@ int parse_create_statement( char * statement ){
     }
     free( data );
 
+    print_logs();
+
     return 0;
 }
 
@@ -107,15 +110,36 @@ int parse_create_statement( char * statement ){
   */
 int parse_drop_statement( char * statement ){
 
-	char* table_name;
-	char *p = strrchr(statement, ' ');
-	if (p && *(p + 1)){
-		table_name = p+1;
-	}
+    int i=0;
+    char *name = NULL;
+    char *temp = strdup( statement );
 
-	// TO-DO:
-	// call the drop table name function here
+    char *end_str = temp;
+    char *token;
+    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
+    {
+        // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
+        int comma_count = char_occur_count( token, ',' );
+        if( comma_count > 0 ){
+            fprintf(stderr, "ERROR: drop statment doesn't allow commas, please remove them from your statement:\n %s\n", statement);
+            return -1;
+        }else if( i >= 3 ){
+            fprintf(stderr, "ERROR: To many tokens in statement: %s\n", statement);
+            return -1;
+        }else if( i ==2 ){
+            int str_len = strlen(token);
+            name = (char *)malloc((str_len+1)*sizeof(char));
+            memset(name, '\0', (str_len+1)*sizeof(char));
+            strcpy(name, token);
+        }
+        i++;
+    }
 
+    drop_table_ddl( logs, name );
+
+    print_logs();
+
+    free( name );
     return 0; 
 }
 
