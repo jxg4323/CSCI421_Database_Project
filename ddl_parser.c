@@ -190,11 +190,15 @@ int parse_alter_statement( char * statement ){
 }
 
 int terminate_logs( char* db_loc ){
-    if( write_catalogs( db_loc, logs ) != 1 ){
-        fprintf(stderr, "Parser: Couldn't write the table schemas to %s\n", db_loc);
-        return -1;
+    if( logs != NULL ){
+        if( write_catalogs( db_loc, logs ) != 1 ){
+            fprintf(stderr, "Parser: Couldn't write the table schemas to %s\n", db_loc);
+            return -1;
+        }
+        terminate_catalog( logs );
+        return 0;
     }
-    terminate_catalog( logs );
+    return -1;
 }
 
 /*

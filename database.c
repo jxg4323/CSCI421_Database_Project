@@ -58,8 +58,9 @@ int execute_query(char * query, union record_item *** result){
  */
 int shutdown_database(){
 	printf("-------TERMINATING DATABASE-----------\n");
-	terminate_logs( db_path );
-	terminate_database();
+	int result = 0;
+	result = terminate_logs( db_path );
+	result = terminate_database();
 	free( db_path );
 	return 0;
 }
@@ -69,12 +70,11 @@ int shutdown_database(){
  * Returns true if the arguments are valid, false if not.
  */
 int arg_manager(bool restart, char *argv[], int argc){
-	printf("-------------VALIDATING ARGUMENTS-----------\n");
-
 	if(restart){
 		//if restart is true
 		//doesn't matter if args 3 & 4 are given bc they get ignored
 		if(argc >= 2 && argc <= 4){
+
 			printf("ARGUMENTS VALID....\n");
 			printf("ATTEMPTING DATABASE RESTART...\n");
 		}else{
@@ -84,7 +84,7 @@ int arg_manager(bool restart, char *argv[], int argc){
 	}else{
 		if(argc == 4){
 			printf("ARGUMENTS VALID....\n");
-                        printf("ATTEMPTING NEW DATABASE START...\n");
+            printf("ATTEMPTING NEW DATABASE START...\n");
 		}else{
 			usage( true );
             return -1;
