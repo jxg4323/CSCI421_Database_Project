@@ -243,4 +243,5 @@ int delete_uniq_tup( table_catalog* tcat, int attr_id );
 void terminate_catalog(catalogs *logs); //   --> GOOD
 
 
+
 #endif

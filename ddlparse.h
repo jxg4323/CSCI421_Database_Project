@@ -16,11 +16,11 @@ int check_statement( char * statement );
 int parse_create_statement( char * statement );
 int parse_drop_statement( char * statement );
 int parse_alter_statement( char * statement );
-void terminate_logs( );
+int terminate_logs( char* db_loc );
 
 // Helper Functions
 int char_occur_count( char* str, char c );
-void print_logs( );
+int terminate_logs( char* db_loc );
 void print_tokens( char** tokens, int count );
 
 

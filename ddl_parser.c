@@ -15,7 +15,7 @@ int parse_ddl_statement( char * statement ){
 	// Keywords to check for : 'primarykey', 'unique', 'foreignkey', 'references', 'notnull', 'integer', 'double', 'boolean', 'char(x)', 'varchar(x)'
 	// 
     char *temp = strdup( statement );
-    char *command = strsep( &temp,DELIMITER );
+    char *command = strtok( temp,DELIMITER );
     // if logs empty then create new otherwise leave alone
 	if( logs == NULL ){
         logs = initialize_catalogs();
@@ -96,9 +96,6 @@ int parse_create_statement( char * statement ){
         free(data[i]);
     }
     free( data );
-
-    print_logs();
-
     return 0;
 }
 
@@ -137,8 +134,6 @@ int parse_drop_statement( char * statement ){
 
     drop_table_ddl( logs, name );
 
-    print_logs();
-
     free( name );
     return 0; 
 }
@@ -169,7 +164,7 @@ int parse_alter_statement( char * statement ){
         int str_len = strlen(token);
         data[i] = (char *)malloc(str_len*sizeof(char)); 
         strcpy(data[i], token);
-        //printf("REST: %s\n", end_str);
+
         if( strcasecmp(token, "default") == 0 ){
             int move = 0;
             while( end_str[move] != '\"' && move < strlen(end_str) ){
@@ -184,11 +179,7 @@ int parse_alter_statement( char * statement ){
     data[i] = (char *)malloc(sizeof(char));
     memset(data[i], '\0', sizeof(char));
     
-    print_tokens( data, total );
-    
     int alt_res = alter_table( logs, total, data );
-
-    print_logs();
 
     for (i = 0; i < total; i++){
         free(data[i]);
@@ -198,7 +189,11 @@ int parse_alter_statement( char * statement ){
     return 0;
 }
 
-void terminate_logs( ){
+int terminate_logs( char* db_loc ){
+    if( write_catalogs( db_loc, logs ) != 1 ){
+        fprintf(stderr, "Parser: Couldn't write the table schemas to %s\n", db_loc);
+        return -1;
+    }
     terminate_catalog( logs );
 }
 

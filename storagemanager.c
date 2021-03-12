@@ -976,7 +976,7 @@ static void read_table_metadata(FILE * meta_file){
 
 static int read_metadata(){ 
 	int length = snprintf(NULL, 0, "%smetadata.dat", db_db_loc);
-	char * meta_loc = malloc(length+1);
+	char * meta_loc = (char*)malloc(sizeof(char)*length+1);
 	snprintf(meta_loc, length+1, "%smetadata.data", db_db_loc);
 	
 	//read page size and buffer size
