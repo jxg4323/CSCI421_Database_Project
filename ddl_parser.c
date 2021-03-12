@@ -1,8 +1,8 @@
 #include "ddl_parser.h"
 #include "ddlparse.h"
 
-#include "string.h"
-
+// stores catalog information about tables
+static catalogs* logs = NULL;
  /*
   * This function handles the parsing of DDL statments
   *
@@ -10,64 +10,95 @@
   * @return 0 on sucess; -1 on failure
   */
 int parse_ddl_statement( char * statement ){
-	// All Table names are unique !! --> has to be enforced
-
 	// Tokenize the command into sections with ',' then 
 	//	spaces & check token for keywords if not a digit
 	// Keywords to check for : 'primarykey', 'unique', 'foreignkey', 'references', 'notnull', 'integer', 'double', 'boolean', 'char(x)', 'varchar(x)'
 	// 
+    char *temp = strdup( statement );
+    char *command = strsep( &temp,DELIMITER );
+    // if logs empty then create new otherwise leave alone
+	if( logs == NULL ){
+        logs = initialize_catalogs();
+        manage_catalogs( logs, 0, false );
+    }
 
-	// have switch statements checking for what the string starts with
-	// if the string starts with 'c' or 'C', we call the parse_create_statement(statement)
-	// else if the string starts with 'd' or 'D', we call the parse_drop_statement(statement)
-	// else if the string starts with 'a' or 'A', we call the parse_alter_statement(statement)
-	char ch = statement[0];
-
-	if (ch=='C' || ch=='c'){
+    // switch statements checking for what the string starts with
+	if ( strcasecmp(command,"create") == 0 ){
 		return parse_create_statement(statement);
 	}
-	else if (ch=='D' || ch == 'd'){
+	else if ( strcasecmp(command,"drop") == 0 ){
 		return parse_drop_statement(statement);
 	}
-	else if (ch=='A' || ch=='a'){
+	else if ( strcasecmp(command,"alter") == 0 ){
 		return parse_alter_statement(statement);
 	}
 	else{
+        fprintf(stderr, "ERROR: command unknown %s\n", command);
 		return -1;
 	}
 }
 
 /*
  * This function handles the parsing of the create table statements.
- * *
-  * @param statement - the create table statement to execute
-  * @return 0 on sucess; -1 on failure
-  */
+ * 
+ * Doesn't allow default value tokens.
+ * 
+ * @param statement - the create table statement to execute
+ * @return 0 on sucess; -1 on failure
+ */
 int parse_create_statement( char * statement ){
  
-    // data is a 2d array of strings
-  	char *data[100];
-  	int i=0;
+    // allow for 100 strings as base
+    char **data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
+  	int i=0, total=1;
+    char *temp = strdup( statement );
 
-    char *end_str;
-    char *token = strtok_r(statement, " ", &end_str);
-
-    while (token != NULL)
+    char *end_str = temp;
+    char *token;
+    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
     {
-        //printf("a = %s\n", token);
-        data[i] = (char *)malloc(20);
-        strcpy(data[i], token);
-        i++;
-        token = strtok_r(NULL, " ", &end_str);
+        // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
+        int comma_count = char_occur_count( token, ',' );
+        if( comma_count > 1 || token[0] == ',' ){
+            fprintf(stderr, "ERROR: statement provided had either too many commas or a misplaced comma before %s\n", end_str);
+            return -1;
+        }
+        if ( i >= INIT_NUM_TOKENS ){
+            data = (char **)realloc( data, (total+1)*sizeof(char *) );
+        }
+        if( i == 3 ){ 
+            // add empty token after table name
+            data[i] = (char *)malloc(sizeof(char));
+            memset(data[i], '\0', sizeof(char));
+            i++, total++;
+        }
+        int str_len = strlen(token);
+        data[i] = (char *)malloc(str_len*sizeof(char));
+        memset(data[i], '\0', str_len*sizeof(char));
+        if( token[str_len-1] == ',' ){
+            strncpy(data[i], token, str_len-1);
+            // add empty token after
+            data[i+1] = (char *)malloc(sizeof(char));
+            memset(data[i+1], '\0', sizeof(char));
+            i++, total++;
+        }else{
+            strcpy(data[i], token);
+        }
+        i++, total++;
     }
+    // add empty token at end of data
+    data[i] = (char *)malloc(sizeof(char));
+    memset(data[i], '\0', sizeof(char));
 
-    //for (i = 0; i < 100; ++i){
-        //printf("%s\n", data[i]);
-        //free(data[i]);
-    //}
+    create_table( logs, total, data );
 
-	// TODO:
-	// call the function create
+    for (i = 0; i < total; i++){
+        free(data[i]);
+    }
+    free( data );
+
+    print_logs();
+
     return 0;
 }
 
@@ -79,15 +110,36 @@ int parse_create_statement( char * statement ){
   */
 int parse_drop_statement( char * statement ){
 
-	char* table_name;
-	char *p = strrchr(statement, ' ');
-	if (p && *(p + 1)){
-		table_name = p+1;
-	}
+    int i=0;
+    char *name = NULL;
+    char *temp = strdup( statement );
 
-	// TO-DO:
-	// call the drop table name function here
+    char *end_str = temp;
+    char *token;
+    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
+    {
+        // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
+        int comma_count = char_occur_count( token, ',' );
+        if( comma_count > 0 ){
+            fprintf(stderr, "ERROR: drop statment doesn't allow commas, please remove them from your statement:\n %s\n", statement);
+            return -1;
+        }else if( i >= 3 ){
+            fprintf(stderr, "ERROR: To many tokens in statement: %s\n", statement);
+            return -1;
+        }else if( i ==2 ){
+            int str_len = strlen(token);
+            name = (char *)malloc((str_len+1)*sizeof(char));
+            memset(name, '\0', (str_len+1)*sizeof(char));
+            strcpy(name, token);
+        }
+        i++;
+    }
 
+    drop_table_ddl( logs, name );
+
+    print_logs();
+
+    free( name );
     return 0; 
 }
 
@@ -98,86 +150,62 @@ int parse_drop_statement( char * statement ){
  * @return 0 on sucess; -1 on failure
  */
 int parse_alter_statement( char * statement ){
-	// data is a 2d array of strings
-  	char *data[100];
-  	int i=0;
+	// allow for 100 strings as base
+    char **data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
+  	int i=0, total=1;
+    char *temp = strdup( statement );
 
-    char *end_str;
-    char *token = strtok_r(statement, " ", &end_str);
+    char *end_str = temp;
+    char *token;
 
-    while (token != NULL)
+    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
     {
-        printf("a = %s\n", token);
-        data[i] = (char *)malloc(20);
+        if ( i >= INIT_NUM_TOKENS ){
+            data = (char **)realloc( data, total*sizeof(char *) );
+        }
+        // TODO: add empty string check when comma
+        int str_len = strlen(token);
+        data[i] = (char *)malloc(str_len*sizeof(char));  // NOTE: might have to add 1 to alloc for '\0'
         strcpy(data[i], token);
-        i++;
-        token = strtok_r(NULL, " ", &end_str);
+        i++, total++;
     }
-
-	//TODO:
-	// call the alter function with data as the parameter
-
     return 0;
 }
 
-char *str_replace(char *orig, char *rep, char *with) {
-    char *result; // the return string
-    char *ins;    // the next insert point
-    char *tmp;    // varies
-    int len_rep;  // length of rep (the string to remove)
-    int len_with; // length of with (the string to replace rep with)
-    int len_front; // distance between rep and end of last rep
-    int count;    // number of replacements
-
-    // sanity checks and initialization
-    if (!orig || !rep)
-        return NULL;
-    len_rep = strlen(rep);
-    if (len_rep == 0)
-        return NULL; // empty rep causes infinite loop during count
-    if (!with)
-        with = "";
-    len_with = strlen(with);
-
-    // count the number of replacements needed
-    ins = orig;
-    for (count = 0; tmp = strstr(ins, rep); ++count) {
-        ins = tmp + len_rep;
-    }
-
-    tmp = result = malloc(strlen(orig) + (len_with - len_rep) * count + 1);
-
-    if (!result)
-        return NULL;
-
-    // first time through the loop, all the variable are set correctly
-    // from here on,
-    //    tmp points to the end of the result string
-    //    ins points to the next occurrence of rep in orig
-    //    orig points to the remainder of orig after "end of rep"
-    while (count--) {
-        ins = strstr(orig, rep);
-        len_front = ins - orig;
-        tmp = strncpy(tmp, orig, len_front) + len_front;
-        tmp = strcpy(tmp, with) + len_with;
-        orig += len_front + len_rep; // move to next "end of rep"
-    }
-    strcpy(tmp, orig);
-    return result;
+void terminate_logs( ){
+    terminate_catalog( logs );
 }
 
+/*
+ * Count the number of occurences of the given character 
+ * @param c in the provided string and return the count.
+ * This function does NOT ignore case.
+ */
+int char_occur_count( char* str, char c ){
+    int str_len = strlen(str);
+    int occur = 0;
+    for( int i = 0; i < str_len; i++ ){
+        if( str[i] == c ){ occur++; } 
+    }
+    return occur;
+}
 
-int check_statement( char * statement ){
-	// check validity of structure of statement
-	// Parse string and confirm the layout of Create/Alter/Drop
-	// 		match the specified latyout
-	// Create
-		// 'create table <name>(
-		// <a_name> <a_type> <constraint_1> ... <constraint_N>'
-		// primarykey( <a_1> ... <a_N>),
-		// unique( ( <a_1> ... <a_N>),
-		// foreignkey( <a_1> ... <a_N> ) references <r_name>( <r_1> ... <r_N>)
-		// );
-	// Drop
-	// Alter
+void print_logs( ){
+    if( logs != NULL ){
+        pretty_print_catalogs( logs );
+    }else{
+        printf("{EMPTY}\n");
+    }
+}
+
+void print_tokens( char** tokens, int count ){
+    printf("{ ");
+    for( int i = 0; i<count; i++ ){
+        if( i== count-1){
+            printf("%s", tokens[i]);
+        }else{
+            printf("%s, ", tokens[i]);
+        }
+    }
+    printf("}\n");
 }
