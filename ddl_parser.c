@@ -185,7 +185,10 @@ int parse_alter_statement( char * statement ){
     memset(data[i], '\0', sizeof(char));
     
     print_tokens( data, total );
-    //TODO: call alter table
+    
+    int alt_res = alter_table( logs, total, data );
+
+    print_logs();
 
     for (i = 0; i < total; i++){
         free(data[i]);

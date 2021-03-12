@@ -1,5 +1,3 @@
-#include <string.h>
-#include <limits.h>
 #include "database1.h"
 #include "database.h"
 
@@ -206,7 +204,7 @@ int main(int argc, char const *argv[])
 
 	parse_ddl_statement( statement );	
 
-	statement = "alter table fourth add FURTHER default   \n  \"10.1\";";
+	statement = "alter table fourth add FURTHER char default \"NULL\";";
 
 	parse_ddl_statement( statement );
 
@@ -374,27 +372,36 @@ int drop_table_ddl( catalogs *cat, char *name ){
 }
 
 int alter_table(catalogs *cat, int token_count, char **tokens){
-    if(token_count != 5 && token_count != 6 && token_count != 8) {
+    if(token_count != 6 && token_count != 7 && token_count != 9) {
         fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
         return -1;
     }
-    if(strcmp(tokens[2], "add"){
-        if(token_count == 8){
+    if( strcasecmp(tokens[3], "add") == 0 ){
+        if(token_count == 9){ // add attribute with default value
+        	if( strcasecmp(tokens[7],"null") == 0 ){
+        		tokens[7] = NULL;
+        	}
             return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[7]);
-        } else {
-            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], null);
+        } else { // add
+            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], NULL);
         }
+    }else if( strcasecmp(tokens[3], "drop") == 0 ){
+    	return drop_attribute( cat, tokens[2], tokens[4] );
+    }else{
+    	fprintf(stderr, "ERROR: '%s' is not a known command.\n", tokens[2]);
+    	return -1;
     }
-
 }
 
 int drop_attribute(catalogs *cat, char *table, char *attribute){
     int table_loc = get_catalog(cat, table);
     if( table_loc == -1 ){
+    	fprintf(stderr, "ERROR: '%s' table doesn't exist.\n", table);
         return -1;
     }
     int attribute_loc = get_attr_loc(&(cat->all_tables[table_loc]), attribute);
     if( attribute_loc == -1 ){
+    	fprintf(stderr, "ERROR: '%s' attribute doesn't exist.\n", attribute);
         return -1;
     }
     int attribute_position = get_attr_idx(&(cat->all_tables[table_loc]), attribute_loc);
@@ -415,19 +422,12 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         return -1;
     }
     int new_attr_count = get_attribute_count_no_deletes(&(cat->all_tables[table_loc]));
-    int *data_types = malloc(sizeof(int) * new_attr_count);
-    int position = 0;
-    for(int i = 0; i < new_attr_count;;){
-        if(cat->all_tables[table_loc].attributes[position].deleted == false){
-            data_types[i] = cat->all_tables[table_loc].attributes[position].type;
-            i++;
-        }
-        position++;
-    }
+    int *data_types = get_table_data_types( &(cat->all_tables[table_loc]) );
+
     int prim_count = cat->all_tables[table_loc].primary_size;
     int *prim_indices = malloc(sizeof(int) * prim_count);
     for(int i = 0; i < prim_count; i++){
-        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i])
+        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i]);
     }
     int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
     if( new_id == -1 ){
@@ -457,13 +457,12 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
 }
 
 int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char *value){
-    if(get_attr_loc(cat, name) != -1){
-        return -1;
-    }
     int table_loc = get_catalog(cat, table);
     if( table_loc == -1 ){
+    	fprintf(stderr, "ERROR: '%s' table doesn't exist.\n", table);
         return -1;
     }
+
     union record_item **records;
     int rec_count = get_records(cat->all_tables[table_loc].id, &records);
     if( rec_count == -1 ){
@@ -474,24 +473,18 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     if( success == -1 ){
         return -1;
     }
+
     success = drop_table(cat->all_tables[table_loc].id);
     if( success == -1 ){
         return -1;
     }
     int new_attr_count = get_attribute_count_no_deletes(&(cat->all_tables[table_loc]));
-    int *data_types = malloc(sizeof(int) * new_attr_count);
-    int position = 0;
-    for(int i = 0; i < new_attr_count;;){
-        if(cat->all_tables[table_loc].attributes[position].deleted == false){
-            data_types[i] = cat->all_tables[table_loc].attributes[position].type;
-            i++;
-        }
-        position++;
-    }
+    int *data_types = get_table_data_types( &(cat->all_tables[table_loc]) );
+
     int prim_count = cat->all_tables[table_loc].primary_size;
     int *prim_indices = malloc(sizeof(int) * prim_count);
     for(int i = 0; i < prim_count; i++){
-        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i])
+        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i]);
     }
     int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
     if( new_id == -1 ){
@@ -500,27 +493,28 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     cat->all_tables[table_loc].id = new_id;
     int type_int = type_conversion(type);
     union record_item new_record;
-    if(value == null){
-        new_record.d = DOUBLE_MIN;
+    if(value == NULL){
+        new_record.d = LONG_MAX;
     } else if(type_int == 0){
         new_record.i = atoi(value);
     } else if(type_int == 1){
-        new_record.d = atod(value);
+    	char *eptr;
+        new_record.d = strtod( value,&eptr ); 
     } else if(type_int == 2){
-        if(strcmp(value, "true") == 0){
+        if(strcasecmp(value, "true") == 0){
             new_record.b = true;
         } else {
             new_record.b = false;
         }
     } else if(type_int == 3){
-        memcpy(new_record, value, strlen(value));
+        memcpy(new_record.c, value, strlen(value));
     } else if(type_int == 4){
-        memcpy(new_record, value, strlen(value));
+        memcpy(new_record.v, value, strlen(value));
     }
     union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
     for(int i = 0; i < rec_count; i++){
         for(int j = 0; j < new_attr_count; j++){
-            if(j == new_attr_count - 1;){
+            if(j == new_attr_count - 1){
                 record[j] = new_record;
             } else {
                 record[j] = records[i][j];

@@ -5,7 +5,8 @@
 #define ALTER 2
 #define DROP 3
 
-
+#include <string.h>
+#include <limits.h>
 #include "tableschema.h"
 #include "ddl_parser.h"
 

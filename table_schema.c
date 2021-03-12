@@ -787,11 +787,11 @@ int type_conversion(char* type){
 	int result = -1;
 	char *temp = strdup(type);
 	char *token = strtok(temp, " \t\r\n(");
-	if( strcmp(type, INTEGER) == 0){ result = 0; }
-	else if( strcmp(type, DOUBLE) == 0){ result = 1; }
-	else if( strcmp(type, BOOLEAN) == 0){ result = 2; }
-	else if( strcmp(type, CHAR) == 0){ result = 3; }
-	else if( strcmp(type, VARCHAR) == 0){ result = 4; }
+	if( strcasecmp(type, INTEGER) == 0){ result = 0; }
+	else if( strcasecmp(type, DOUBLE) == 0){ result = 1; }
+	else if( strcasecmp(type, BOOLEAN) == 0){ result = 2; }
+	else if( strcasecmp(type, CHAR) == 0){ result = 3; }
+	else if( strcasecmp(type, VARCHAR) == 0){ result = 4; }
 	return result;
 }
 
@@ -897,9 +897,13 @@ char *get_attr_name( catalogs* logs, char *table_name, int attr_id ){
  * for freeing the returning pointer.
  */
 int* get_table_data_types( table_catalog* tcat ){
-	int *data_types = (int *)malloc(tcat->attribute_count*sizeof(int));
+	int c = get_attribute_count_no_deletes( tcat );
+	int s = 0;
+	int *data_types = (int *)malloc(c*sizeof(int));
 	for( int i = 0; i<tcat->attribute_count; i++ ){
-		data_types[i] = tcat->attributes[i].type;
+		if( tcat->attributes[i].deleted ){ continue; }
+		data_types[s] = tcat->attributes[i].type;
+		s++;
 	}
 	return data_types;
 }
