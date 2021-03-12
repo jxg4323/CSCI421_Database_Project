@@ -7,6 +7,7 @@
 
 #include <string.h>
 #include <limits.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include "tableschema.h"
@@ -24,6 +25,7 @@ int alter_table( catalogs *cat, int token_count, char** tokens );
 //helper functions
 int drop_attribute(catalogs *cat, char *table, char *attribute);
 int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char *value);
-bool health_check( );
+int health_check( );
+bool is_number( char* str );
 
 #endif

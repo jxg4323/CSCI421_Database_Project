@@ -65,6 +65,17 @@ int shutdown_database(){
 	return 0;
 }
 
+/* 
+ * Loops through the provided string and returns true
+ * if every character is a digit and false o.w.
+ */
+bool is_number( char *str ){
+	bool isNum = true;
+	for( int i = 0; i < strlen(str); i++ ){
+		if( !isdigit(str[i]) ){ isNum = false; }
+	}
+	return isNum;
+}
 
 /*
  * Returns true if the arguments are valid, false if not.
@@ -73,8 +84,18 @@ int arg_manager(bool restart, char *argv[], int argc){
 	if(restart){
 		//if restart is true
 		//doesn't matter if args 3 & 4 are given bc they get ignored
-		if(argc >= 2 && argc <= 4){
+		switch( argc ){
+			case 2:
+				break;
+			case 4:
 
+				break;
+			default:
+				usage( true );
+	            return -1;
+				break;
+		}
+		if(argc >= 2 && argc <= 4){
 			printf("ARGUMENTS VALID....\n");
 			printf("ATTEMPTING DATABASE RESTART...\n");
 		}else{
@@ -96,10 +117,12 @@ int arg_manager(bool restart, char *argv[], int argc){
 /*
  * Open the directory and confirm the metadata file exists
  * and isn't empty.
- * Return True if database can be restarted safely and false o.w.
+ * Return 1 to restart the database
+ * 		  0 to create a new database
+ *       -1 with an error
  */
-bool health_check( ){
-	bool restart = false;
+int health_check( ){
+	int restart = 0;
 	DIR* directory = opendir( db_path );
 	if(directory){ // if directory can be opened check metadata file
 		int length = snprintf(NULL, 0, "%smetadata.dat", db_path);
@@ -110,9 +133,12 @@ bool health_check( ){
 			FILE* fp = fopen(meta_loc, "rb");
 			fseek( fp, 0, SEEK_END );
 			size = ftell( fp );
-			restart = (size > 0); // only restart if metadata file has contents
+			restart = (size > 0) ? 1 : 0; // only restart if metadata file has contents
 		}
 		free( meta_loc );
+	}else if (ENOENT == errno){
+		fprintf(stderr, "ERROR: Directory in path %s doesn't exist.\n", db_path );
+		restart = -1;
 	}
 	return restart;
 }
@@ -127,8 +153,8 @@ int run(int argc, char *argv[]){
 		usage(true);
 		return -1;
 	}
-	bool restart = health_check( );
-	if(restart){
+	int restart = health_check( );
+	if(restart == 1){
 		//if directory exists, call restart
 		int results = arg_manager(true, argv, argc);
 		if(results){
@@ -138,8 +164,8 @@ int run(int argc, char *argv[]){
 			printf("TERMINATING PROGRAM.\n");
                         return 0;
 		}
-	}else{
-		//if directory does not exist, call start
+	}else if( restart == 0) {
+		//if directory exists but no file contents, call start
 		int results = arg_manager(false, argv, argc);
 		if(results){
 			printf("------------CREATING DATABASE----------------\n");
@@ -149,6 +175,9 @@ int run(int argc, char *argv[]){
 			fprintf(stderr,"ERROR: WASN'T ABLE TO CREATE NEW DATABASE. TERMINATING PROGRAM.\n");
             return -1;
 		}
+	}else{
+		usage( true );
+		return -1;
 	}
 	
 
@@ -188,9 +217,9 @@ int run(int argc, char *argv[]){
 
 void usage(bool error){
 	if( error ){
-		fprintf( stderr, "./database <db_loc> <page_size> <buffer_size>\n" );
+		fprintf( stderr, "USAGE: ./database <db_loc> <page_size> <buffer_size>\n" );
 	}else{
-		fprintf( stdout, "./database <db_loc> <page_size> <buffer_size>\n" );
+		fprintf( stdout, "USAGE: ./database <db_loc> <page_size> <buffer_size>\n" );
 	}
 }
 
