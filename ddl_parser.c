@@ -150,24 +150,47 @@ int parse_drop_statement( char * statement ){
  * @return 0 on sucess; -1 on failure
  */
 int parse_alter_statement( char * statement ){
-	// data is a 2d array of strings
-  	char *data[100];
-  	int i=0;
+    // allow for 100 strings as base
+    char **data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
+    int i=0, total=1;
+    char *temp = strdup( statement );
 
-    char *end_str;
-    char *token = strtok_r(statement, " ", &end_str);
+    char *end_str = temp;
+    char *token;
+    char *delims = DELIMITER;
 
-    while (token != NULL)
+    while ( (token = strtok_r(end_str, delims, &end_str)) )
     {
-        printf("a = %s\n", token);
-        data[i] = (char *)malloc(20);
-        strcpy(data[i], token);
-        i++;
-        token = strtok_r(NULL, " ", &end_str);
-    }
+        delims = DELIMITER;
+        if ( i >= INIT_NUM_TOKENS ){
+            data = (char **)realloc( data, total*sizeof(char *) );
+        }
 
-	//TODO:
-	// call the alter function with data as the parameter
+        int str_len = strlen(token);
+        data[i] = (char *)malloc(str_len*sizeof(char)); 
+        strcpy(data[i], token);
+        //printf("REST: %s\n", end_str);
+        if( strcasecmp(token, "default") == 0 ){
+            int move = 0;
+            while( end_str[move] != '\"' && move < strlen(end_str) ){
+                move++;
+            }
+            end_str = end_str+move;
+            delims = "\"";
+        }
+        i++, total++;
+    }
+    // add empty token at end of data
+    data[i] = (char *)malloc(sizeof(char));
+    memset(data[i], '\0', sizeof(char));
+    
+    print_tokens( data, total );
+    //TODO: call alter table
+
+    for (i = 0; i < total; i++){
+        free(data[i]);
+    }
+    free( data );
 
     return 0;
 }
