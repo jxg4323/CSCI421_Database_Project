@@ -16,6 +16,5 @@ int run(char *argv[]);
 int create_table( catalogs *cat, int token_count, char** tokens );  //   --> GOOD
 int drop_table_ddl( catalogs *cat, char *name );
 int alter_table();
-int alter_table();
 
 #endif

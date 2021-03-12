@@ -908,10 +908,10 @@ void pretty_print_catalogs(catalogs* logs){
  * relations, and unique tupes.to stdout.
  */
 void pretty_print_table(table_catalog* tcat){
-	printf("Table: \n{name: %s, deleted: %d, attribute_count: %d, "
+	printf("Table: \n{name: %s, deleted: %s, attribute_count: %d, "
 			"foreign_size: %d, primary_size: %d,"" unique_tuples: %d, " 
 			"Attributes: [\n",
-			tcat->table_name, tcat->deleted, tcat->attribute_count, 
+			tcat->table_name, tcat->deleted ? "TRUE" : "FALSE", tcat->attribute_count, 
 			tcat->foreign_size, tcat->primary_size, tcat->unique_size );
 	// print attributes
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );
@@ -928,8 +928,8 @@ void pretty_print_table(table_catalog* tcat){
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
 		char* str_type = type_string( attributes[i].type );
-		printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, i, str_type, attributes[i].deleted ? 1 : 0,
+		printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+			attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE",
 			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
 	}
 }

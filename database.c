@@ -205,7 +205,7 @@ int main(int argc, char const *argv[])
 
 	parse_ddl_statement( statement );	
 
-	statement = "drop table fourth";
+	statement = "drop table fourth;";
 
 	parse_ddl_statement( statement );
 
