@@ -78,7 +78,7 @@ bool is_number( char *str ){
 }
 
 /*
- * Returns true if the arguments are valid, false if not.
+ * Returns true 1 if the arguments are valid, false 0 if not.
  */
 int arg_manager(bool restart, char *argv[], int argc){
 	if(restart){
@@ -87,12 +87,13 @@ int arg_manager(bool restart, char *argv[], int argc){
 		switch( argc ){
 			case 2:
 				break;
+			case 3: 
+				break;
 			case 4:
-
 				break;
 			default:
 				usage( true );
-	            return -1;
+	            return 0;
 				break;
 		}
 		if(argc >= 2 && argc <= 4){
@@ -100,15 +101,23 @@ int arg_manager(bool restart, char *argv[], int argc){
 			printf("ATTEMPTING DATABASE RESTART...\n");
 		}else{
 			usage( true );
-            return -1;
+            		return 0;
 		}
 	}else{
 		if(argc == 4){
-			printf("ARGUMENTS VALID....\n");
-            printf("ATTEMPTING NEW DATABASE START...\n");
+			bool arg2check = is_number(argv[2]);
+			bool arg3check = is_number(argv[3]);
+			if(arg2check && arg3check){
+				printf("ARGUMENTS VALID....\n");
+            			printf("ATTEMPTING NEW DATABASE START...\n");
+			}else{
+				printf("INVALID ARGUMENTS...\n");
+				return 0;
+			}
 		}else{
+			printf("INVALID NUMBER OF ARGUMENTS.\n");
 			usage( true );
-            return -1;
+            		return 0;
 		}
 	}
 	return 1;
@@ -159,7 +168,7 @@ int run(int argc, char *argv[]){
 		int results = arg_manager(true, argv, argc);
 		if(results){
 			printf("------------RESTARTING DATABASE----------------\n");
-            create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
+			create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
 		}else{
 			printf("TERMINATING PROGRAM.\n");
                         return 0;
