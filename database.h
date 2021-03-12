@@ -11,8 +11,8 @@
 
 
 void usage(bool error);
-int * arg_manager(bool restart, char const *argv[], int argc);
-int run(char *argv[]);
+int arg_manager(bool restart, char *argv[], int argc);
+int run(int argc, char *argv[]);
 int create_table( catalogs *cat, int token_count, char** tokens );  //   --> GOOD
 int drop_table_ddl( catalogs *cat, char *name );
 int alter_table();

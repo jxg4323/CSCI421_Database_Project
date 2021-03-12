@@ -4,6 +4,8 @@
 #include "string.h"
 #include "storagemanager.h"
 #include "ddl_parser.h"
+#include <dirent.h>
+#include <errno.h>
 
 /*
  * This function will be used to execute SQL statements that
@@ -15,28 +17,33 @@
            -1 otherwise
  */
 int execute_non_query(char * statement){
-	//TODO: multiline queries -> loop user input until semicolon
-	char *token = strtok(statement, " ");
-	if(strcmp(token, "create") == 0 || strcmp(token, "alter") == 0 || strcmp(token, "drop") == 0){
-		token = strtok(NULL, " ");
-		if(strcmp(token, "table") == 0){
-			parse_ddl_statement(statement); //assume this works
-			printf("SUCCESS\n");
-			//int result = parse_ddl_statement(input);
-			//if(result == 0){
-			//	prinf("SUCCESS\n");
-			//}else{
-			//      printf("ERROR\n");
-			//}
+	char newStr[1024];
+	strcpy(newStr, statement);
+
+	char delimit[] = " \t\r\n\0";
+	char *token = strtok(newStr, delimit);
+
+	if(strncmp(token, "create", 6) == 0 || strncmp(token, "alter", 5) == 0 || strncmp(token, "drop", 4) == 0){
+		token = strtok(NULL, delimit);
+		if(strncmp(token, "table", 5) == 0){
+			int result = parse_ddl_statement(statement);
+			if(result == 0){
+				printf("SUCCESS\n");
+			}else{
+				printf("ERROR\n");
+			}
 			return 0;
 		}else{
-			printf("ERROR\n");
-			//ignore for now. either send to dml or bad query.
+			printf("ERROR: BAD QUERY. \n");
+			return -1;
+			//bad query.
 		}
 	}else{
 		printf("ERROR\n");
+		return -1;
+		//either dml or bad query
 	}
-	return 1;
+	return 0;
 }
 
 // This function will be used when executing database queries that return tables of data.
@@ -51,50 +58,100 @@ int execute_query(char * query, union record_item *** result){
  * @return 0 on success; -1 on failure.
  */
 int shutdown_database(){
-	//TODO: Free up heap memory
 	printf("-------TERMINATING DATABASE-----------\n");
-	//terminate_database();
+	//terminate_logs();
+	terminate_database();
 	return 0;
 }
 
 
-int * arg_manager(bool restart, char const *argv[], int argc){
-	// retreive and verify arguments validity
-	//incorrect number of arguments
-	//if(argc != 3){
-	//	printf("Incorrect number of arguments");
-	//}
-	//return 0;
-	
-	// if this is a new database ignore the args and return null
-	// if arguments pass requirements return as array of page size and buffer 
+/*
+ * Returns true if the arguments are valid, false if not.
+ */
+int arg_manager(bool restart, char *argv[], int argc){
+	printf("-------------VALIDATING ARGUMENTS-----------\n");
+	if(restart){
+		//if restart is true
+		//doesn't matter if args 3 & 4 are given bc they get ignored
+		if(argc >= 2 && argc <= 4){
+			printf("ARGUMENTS VALID....\n");
+			printf("ATTEMPTING DATABASE RESTART...\n");
+		}else{
+			printf("INCORRECT NUMBER OF ARGUMENTS FOR RESTART.\n");
+			return 0;
+		}
+	}else{
+		if(argc == 4){
+			printf("ARGUMENTS VALID....\n");
+                        printf("ATTEMPTING NEW DATABASE START...\n");
+		}else{
+			printf("INCORRECT NUMBER OF ARGUMENTS FOR NEW START.\n");
+                        return 0;
+		}
+	}
+	return 1;
 }
 
 
-int run(char *argv[]){
-	// keep complexity out of main loop
-	// continuously pass string lines to the ddl parser 
-	// ignoring whitespace (/s, /n, /r, /t) and only end lines with ';'
-
-	printf("PATH: %s\n", *argv);
-	//TODO: add logic for restart db
-	printf("------------CREATING DATABASE----------------\n");
-	create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false); 
+int run(int argc, char *argv[]){
+	//check db path
+	DIR* directory = opendir(argv[1]);
+	if(directory){
+		//if directory exists, call restart
+		int results = arg_manager(true, argv, argc);
+		if(results){
+			printf("------------RESTARTING DATABASE----------------\n");
+                        create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
+		}else{
+			printf("TERMINATING PROGRAM.\n");
+                        return 0;
+		}
+	}else if(ENOENT == errno){
+		//if directory does not exist, call start
+		int results = arg_manager(false, argv, argc);
+		if(results){
+			printf("------------CREATING DATABASE----------------\n");
+                        create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
+			printf("DATABASE CREATED SUCCESSFULLY.\n");
+		}else{
+			printf("TERMINATING PROGRAM.\n");
+                        return 0;
+		}
+	}else{
+		//some other problem with opendir happened
+		printf("PROBLEM OPENING DIRECTORY: %s.\nTERMINATING PROGRAM.\n", argv[1]);
+		return 0;
+	}
+	
 
 	//loop for user input
-	char input[1024];
-	int quit = strcmp(input, "quit;");
-	while(quit != 0){
-		printf("Enter SQL query: ");
-		fgets(input, 1024, stdin); //get user input
-		quit = strncmp(input, "quit;", 5); //check if quit
+	char *input = NULL;
+	ssize_t n = 1024;
+	ssize_t charRead;
+	int quit = -1; //initialize quit
+	char *tokenString;
 
-		//if not quit, tokenize
-		if(quit != 0){
+	printf("Enter SQL query: ");
+	while((charRead = getdelim(&input, &n, 59, stdin)) > 0){ //ascii for semicolon = 59
+
+		//make copy of string so its not destroyed in tokenizing
+		strcpy(tokenString, input);
+
+		//ignore whitespace by tokenizing
+		char delims[] = " \n\t\0\r";
+		char *token = strtok(tokenString, delims);
+        	if((quit = strcmp(token, "quit;")) == 0){
+			printf("EXITING PROGRAM....\n");
+                        break;
+		}else{
 			execute_non_query(input);
 		}
+		printf("Enter SQL query: ");
 	}
+	free(input);
+	
 	shutdown_database();
+	printf("DATABASE SHUTDOWN SUCCESSFUL.\n");
 	return 0;
 }
 
@@ -109,12 +166,11 @@ void usage(bool error){
 
 int main(int argc, char *argv[])
 {
-	run(argv);
-//	return 0;
 
 	int result = 0;
 	int consts[3] = {NOTNULL, PRIMARYKEY, UNIQUE};
-	char *db_loc = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
+//	char *db_loc = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
+	char *db_loc = argv[1];
 	char *prim = (char *)malloc(10*sizeof(char));
 	char *sprim = (char *)malloc(10*sizeof(char));
 	char **uns = (char **)malloc(2*sizeof(char *));
@@ -215,6 +271,8 @@ int main(int argc, char *argv[])
 	statement = "drop table fourth";
 
 	parse_ddl_statement( statement );
+
+	run(argc,argv);
 
 	return 0;
 }
