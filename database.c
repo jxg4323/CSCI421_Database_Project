@@ -26,7 +26,7 @@ int execute_non_query(char * statement){
 			if(result == 0){
 				printf("SUCCESS\n");
 			}else{
-				fprintf(stderr,"ERROR parsing provided statement.\n");
+				fprintf(stderr,"ERROR\n");
 			}
 			free( newStr );
 			return 0;
@@ -78,37 +78,40 @@ bool is_number( char *str ){
 }
 
 /*
- * Returns true if the arguments are valid, false if not.
+ * Returns true 1 if the arguments are valid, false 0 if not.
  */
 int arg_manager(bool restart, char *argv[], int argc){
 	if(restart){
 		//if restart is true
 		//doesn't matter if args 3 & 4 are given bc they get ignored
-		switch( argc ){
-			case 2:
-				break;
-			case 4:
-
-				break;
-			default:
-				usage( true );
-	            return -1;
-				break;
-		}
-		if(argc >= 2 && argc <= 4){
+		if(argc == 2 || argc == 4){
 			printf("ARGUMENTS VALID....\n");
 			printf("ATTEMPTING DATABASE RESTART...\n");
 		}else{
+			fprintf(stderr, "INVALID NUMBER OF ARGUMENTS.\n");
 			usage( true );
-            return -1;
+    		return 0;
 		}
 	}else{
 		if(argc == 4){
-			printf("ARGUMENTS VALID....\n");
-            printf("ATTEMPTING NEW DATABASE START...\n");
+			bool arg2check = is_number(argv[2]);
+			bool arg3check = is_number(argv[3]);
+			if(arg2check && arg3check){
+				printf("ARGUMENTS VALID....\n");
+            			printf("ATTEMPTING NEW DATABASE START...\n");
+			}else{
+				if(!arg2check){
+					fprintf(stderr, "ERROR: INVALID ARGUMENT... page_size: '%s' isn't a number \n", argv[2]);
+				}else if( !arg3check ){
+					fprintf(stderr, "ERROR: INVALID ARGUMENT... buffer_size: '%s' isn't a number \n", argv[3]);
+				}else{
+					fprintf(stderr, "ERROR: BOTH page_size: '%s' and buffer_size: '%s' are invalid numbers\n", argv[2], argv[3]);
+				}
+				return 0;
+			}
 		}else{
 			usage( true );
-            return -1;
+    		return 0;
 		}
 	}
 	return 1;
@@ -159,8 +162,8 @@ int run(int argc, char *argv[]){
 		int results = arg_manager(true, argv, argc);
 		if(results){
 			printf("------------RESTARTING DATABASE----------------\n");
-            create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
-            read_logs( db_path );
+			create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
+			read_logs( db_path );
 		}else{
 			printf("TERMINATING PROGRAM.\n");
             return 0;
@@ -170,7 +173,7 @@ int run(int argc, char *argv[]){
 		int results = arg_manager(false, argv, argc);
 		if(results){
 			printf("------------CREATING DATABASE----------------\n");
-        	create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
+    		create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
 			printf("DATABASE CREATED SUCCESSFULLY.\n");
 		}else{
 			fprintf(stderr,"ERROR: WASN'T ABLE TO CREATE NEW DATABASE. TERMINATING PROGRAM.\n");
@@ -201,7 +204,6 @@ int run(int argc, char *argv[]){
 		char *token = strtok(tokenString, delims);
     	if((quit = strcasecmp(token, "quit")) == 0){
 			printf("EXITING PROGRAM....\n");
-			print_logs( );
 			free( tokenString );
             break;
 		}else{
@@ -229,7 +231,12 @@ void usage(bool error){
 int main(int argc, char *argv[])
 {
 
-	int run_result = run( argc,argv );
+	int result = 0;
+	int consts[3] = {NOTNULL, PRIMARYKEY, UNIQUE};
+	//char *db_loc = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
+	char *db_loc = argv[1];
+
+	run(argc,argv);
 
 	return 0;
 }
@@ -257,7 +264,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
     current = 4; // skip over empty string
     while(current < token_count && valid ){
-        if(strcasecmp(tokens[current], "primarykey") == 0){
+        if(strcmp(tokens[current], "primarykey") == 0){
             current++;
             char ** prims = (char **)malloc(sizeof(char *));
             int prim_count = 0;
@@ -278,7 +285,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( prims[i] );
             }
             free( prims );
-        } else if(strcasecmp(tokens[current], "unique") == 0){
+        } else if(strcmp(tokens[current], "unique") == 0){
             current++;
             char ** uniques = (char **)malloc(sizeof(char *));
             int uniq_count = 0;
@@ -299,35 +306,31 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( uniques[i] );
             }
             free( uniques );
-        } else if(strcasecmp(tokens[current], "foreignkey") == 0){
+        } else if(strcmp(tokens[current], "foreignkey") == 0){
             current++;
             int foreign_count = 1;
-            char *f_name;
             char **foreigns = (char **)malloc(sizeof(char *));
-            int indx = 0;
-            while(strcasecmp(tokens[current], "references") != 0){
-                foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[indx], tokens[current]);
-                indx++;
+            int key_count = 0;
+            while(strcmp(tokens[current], "references") != 0){
                 foreign_count++;
+                key_count++;
+                foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
+                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[foreign_count-1], tokens[current]);
                 current++;
             }
             current++;
-            f_name = (char*)malloc(strlen(tokens[current]+1)*sizeof(char));
-            memset( f_name, '\0', (strlen(tokens[current])+1)*sizeof(char));
-            strcpy( f_name, tokens[current] );
-            current++;
+            strcpy(foreigns[0], tokens[current]);
             while(strcmp(tokens[current], "") != 0){
-                foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[indx], tokens[current]);
                 foreign_count++;
+                foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
+                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[foreign_count-1], tokens[current]);
                 current++;
             }
-            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, indx, f_name);
+            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
             if(added == -1){
                 valid = false;
             }
@@ -336,23 +339,20 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( foreigns[i] );
             }
             free( foreigns );
-            free( f_name );
         } else {
             int name_idx = current++;
             int type_idx = current++;
             int constraints[3] = { 0 };
             while(strcmp(tokens[current], "") != 0 && valid != false){
-                if(strcasecmp(tokens[current], "notnull") == 0){
+                if(strcmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
                     current++;
-                } else if(strcasecmp(tokens[current], "primarykey") == 0){
+                } else if(strcmp(tokens[current], "primarykey") == 0){
                     constraints[1] = 1;
                     current++;
-                } else if(strcasecmp(tokens[current], "unique") == 0){
+                } else if(strcmp(tokens[current], "unique") == 0){
                     constraints[2] = 1;
                     current++;
-                } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
-                	current++;
                 } else {
                     valid = false;
                 }
