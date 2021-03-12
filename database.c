@@ -26,7 +26,7 @@ int execute_non_query(char * statement){
 			if(result == 0){
 				printf("SUCCESS\n");
 			}else{
-				fprintf(stderr,"ERROR\n");
+				fprintf(stderr,"ERROR parsing provided statement.\n");
 			}
 			free( newStr );
 			return 0;
@@ -160,16 +160,17 @@ int run(int argc, char *argv[]){
 		if(results){
 			printf("------------RESTARTING DATABASE----------------\n");
             create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
+            read_logs( db_path );
 		}else{
 			printf("TERMINATING PROGRAM.\n");
-                        return 0;
+            return 0;
 		}
 	}else if( restart == 0) {
 		//if directory exists but no file contents, call start
 		int results = arg_manager(false, argv, argc);
 		if(results){
 			printf("------------CREATING DATABASE----------------\n");
-                        create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
+        	create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
 			printf("DATABASE CREATED SUCCESSFULLY.\n");
 		}else{
 			fprintf(stderr,"ERROR: WASN'T ABLE TO CREATE NEW DATABASE. TERMINATING PROGRAM.\n");
@@ -200,6 +201,7 @@ int run(int argc, char *argv[]){
 		char *token = strtok(tokenString, delims);
     	if((quit = strcasecmp(token, "quit")) == 0){
 			printf("EXITING PROGRAM....\n");
+			print_logs( );
 			free( tokenString );
             break;
 		}else{
@@ -227,12 +229,7 @@ void usage(bool error){
 int main(int argc, char *argv[])
 {
 
-	int result = 0;
-	int consts[3] = {NOTNULL, PRIMARYKEY, UNIQUE};
-	//char *db_loc = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
-	char *db_loc = argv[1];
-
-	run(argc,argv);
+	int run_result = run( argc,argv );
 
 	return 0;
 }
@@ -260,7 +257,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
     current = 4; // skip over empty string
     while(current < token_count && valid ){
-        if(strcmp(tokens[current], "primarykey") == 0){
+        if(strcasecmp(tokens[current], "primarykey") == 0){
             current++;
             char ** prims = (char **)malloc(sizeof(char *));
             int prim_count = 0;
@@ -281,7 +278,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( prims[i] );
             }
             free( prims );
-        } else if(strcmp(tokens[current], "unique") == 0){
+        } else if(strcasecmp(tokens[current], "unique") == 0){
             current++;
             char ** uniques = (char **)malloc(sizeof(char *));
             int uniq_count = 0;
@@ -302,31 +299,35 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( uniques[i] );
             }
             free( uniques );
-        } else if(strcmp(tokens[current], "foreignkey") == 0){
+        } else if(strcasecmp(tokens[current], "foreignkey") == 0){
             current++;
             int foreign_count = 1;
+            char *f_name;
             char **foreigns = (char **)malloc(sizeof(char *));
-            int key_count = 0;
-            while(strcmp(tokens[current], "references") != 0){
-                foreign_count++;
-                key_count++;
+            int indx = 0;
+            while(strcasecmp(tokens[current], "references") != 0){
                 foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[foreign_count-1], tokens[current]);
+                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[indx], tokens[current]);
+                indx++;
+                foreign_count++;
                 current++;
             }
             current++;
-            strcpy(foreigns[0], tokens[current]);
+            f_name = (char*)malloc(strlen(tokens[current]+1)*sizeof(char));
+            memset( f_name, '\0', (strlen(tokens[current])+1)*sizeof(char));
+            strcpy( f_name, tokens[current] );
+            current++;
             while(strcmp(tokens[current], "") != 0){
-                foreign_count++;
                 foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[foreign_count-1], tokens[current]);
+                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[indx], tokens[current]);
+                foreign_count++;
                 current++;
             }
-            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
+            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, indx, f_name);
             if(added == -1){
                 valid = false;
             }
@@ -335,20 +336,23 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( foreigns[i] );
             }
             free( foreigns );
+            free( f_name );
         } else {
             int name_idx = current++;
             int type_idx = current++;
             int constraints[3] = { 0 };
             while(strcmp(tokens[current], "") != 0 && valid != false){
-                if(strcmp(tokens[current], "notnull") == 0){
+                if(strcasecmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
                     current++;
-                } else if(strcmp(tokens[current], "primarykey") == 0){
+                } else if(strcasecmp(tokens[current], "primarykey") == 0){
                     constraints[1] = 1;
                     current++;
-                } else if(strcmp(tokens[current], "unique") == 0){
+                } else if(strcasecmp(tokens[current], "unique") == 0){
                     constraints[2] = 1;
                     current++;
+                } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
+                	current++;
                 } else {
                     valid = false;
                 }

@@ -78,9 +78,9 @@ int get_attribute_count_no_deletes(table_catalog* t_cat);    //   --> GOOD
 int get_relation_count_no_deletes(table_catalog* tcat);    //   --> GOOD
 int get_unique_count_no_deletes(table_catalog* tcat);    //   --> GOOD
 void pretty_print_catalogs(catalogs* logs);    //   --> GOOD
-void pretty_print_table(table_catalog* tcat);    //   --> GOOD
+void pretty_print_table(catalogs* logs,table_catalog* tcat);    //   --> GOOD
 void pretty_print_attributes( attr_info* attributes, int size );    //   --> GOOD
-void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size );    //   --> GOOD
+void pretty_print_relations( catalogs* logs, table_catalog* tcat, foreign_data* relations, int size );    //   --> GOOD
 void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size );    //   --> GOOD
 void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size );    //   --> GOOD
 char *get_attr_name( catalogs* logs, char *table_name, int attr_id );    //   --> GOOD
@@ -128,14 +128,14 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
 int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name);   //   --> GOOD
 
 /*
- * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
+ * Layout of the foreign_row is: ["a_1", "a_2", "r_1", "r_2"]
  * allocate or reallocate memory for the addidtion of the next foreign reference.
  * Confirm the other attributes in the foreign table exist as well as the foreign 
  * table itself, if not return -1.
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
-int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count);   //   --> GOOD
+int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count, char* f_name);   //   --> GOOD
 
 /*
  * The foreign row is the an array of tokens that are as follows:

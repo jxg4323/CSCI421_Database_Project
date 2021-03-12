@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #define DELIMITER " \t\r\n();"
 #define INIT_NUM_TOKENS 100
+#define MIN_CREATE_TOKENS 7
 
 
 #include "database.h"
@@ -22,6 +23,8 @@ int terminate_logs( char* db_loc );
 int char_occur_count( char* str, char c );
 int terminate_logs( char* db_loc );
 void print_tokens( char** tokens, int count );
+void print_logs( );
+void read_logs( char* db_loc );
 
 
 #endif

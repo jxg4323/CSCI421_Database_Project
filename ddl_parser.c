@@ -57,46 +57,59 @@ int parse_create_statement( char * statement ){
     char *token;
     while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
     {
-        // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
-        int comma_count = char_occur_count( token, ',' );
-        if( comma_count > 1 || token[0] == ',' ){
-            fprintf(stderr, "ERROR: statement provided had either too many commas or a misplaced comma before %s\n", end_str);
-            return -1;
-        }
-        if ( i >= INIT_NUM_TOKENS ){
-            data = (char **)realloc( data, (total+1)*sizeof(char *) );
-        }
-        if( i == 3 ){ 
-            // add empty token after table name
+        if( strcmp(token, ",") == 0 ){ // if token is just a comma skip it. 
+            // add empty token after
             data[i] = (char *)malloc(sizeof(char));
             memset(data[i], '\0', sizeof(char));
-            i++, total++;
-        }
-        int str_len = strlen(token);
-        data[i] = (char *)malloc(str_len*sizeof(char));
-        memset(data[i], '\0', str_len*sizeof(char));
-        if( token[str_len-1] == ',' ){
-            strncpy(data[i], token, str_len-1);
-            // add empty token after
-            data[i+1] = (char *)malloc(sizeof(char));
-            memset(data[i+1], '\0', sizeof(char));
-            i++, total++;
         }else{
-            strcpy(data[i], token);
+            // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
+            int comma_count = char_occur_count( token, ',' );
+            if( comma_count > 1 || (token[0] == ',' && strlen(token)>1) ){
+                fprintf(stderr, "ERROR: statement provided had either too many commas or a misplaced comma before %s\n", end_str);
+                return -1;
+            }
+            if ( i >= INIT_NUM_TOKENS ){
+                data = (char **)realloc( data, (total+1)*sizeof(char *) );
+            }
+            if( i == 3 ){ 
+                // add empty token after table name
+                data[i] = (char *)malloc(sizeof(char));
+                memset(data[i], '\0', sizeof(char));
+                i++, total++;
+            }
+            int str_len = strlen(token);
+            data[i] = (char *)malloc(str_len*sizeof(char));
+            memset(data[i], '\0', str_len*sizeof(char));
+            if( token[str_len-1] == ',' ){
+                strncpy(data[i], token, str_len-1);
+                // add empty token after
+                data[i+1] = (char *)malloc(sizeof(char));
+                memset(data[i+1], '\0', sizeof(char));
+                i++, total++;
+            }else{
+                strcpy(data[i], token);
+            }
         }
         i++, total++;
     }
     // add empty token at end of data
     data[i] = (char *)malloc(sizeof(char));
     memset(data[i], '\0', sizeof(char));
+    
+    int res = 0;
+    if( total < MIN_CREATE_TOKENS ){
+        fprintf( stderr, "ERROR: statement '%s' doesn't contain enough information to create a new table.\n", statement);
+        res = -1;
+    }else{
+        create_table( logs, total, data );
+    }
 
-    create_table( logs, total, data );
 
     for (i = 0; i < total; i++){
         free(data[i]);
     }
     free( data );
-    return 0;
+    return res;
 }
 
 /*
@@ -166,18 +179,27 @@ int parse_alter_statement( char * statement ){
         strcpy(data[i], token);
 
         if( strcasecmp(token, "default") == 0 ){
-            int move = 0;
-            while( end_str[move] != '\"' && move < strlen(end_str) ){
-                move++;
+            int quote_count = char_occur_count( end_str, '\"' ); 
+            // needs to be 2 --> 1 = error, 0 ignore
+            if( quote_count == 2 ){
+                int move = 0;
+                while( end_str[move] != '\"' && move < strlen(end_str) ){
+                    move++;
+                }
+                end_str = end_str+move;
+                delims = "\"";
+            }else if( quote_count == 1 ){
+                fprintf(stderr, "ERROR: default value has only 1 '\"' in statement '%s'\n", end_str );
+                return -1;
             }
-            end_str = end_str+move;
-            delims = "\"";
         }
         i++, total++;
     }
     // add empty token at end of data
     data[i] = (char *)malloc(sizeof(char));
     memset(data[i], '\0', sizeof(char));
+
+    print_tokens( data, total );
     
     int alt_res = alter_table( logs, total, data );
 
@@ -189,6 +211,20 @@ int parse_alter_statement( char * statement ){
     return 0;
 }
 
+/*
+ * Read the logs from the disk into the static variable.
+ */
+void read_logs( char* db_loc ){
+    if( logs == NULL ){
+        logs = initialize_catalogs();
+    }
+    read_catalogs( db_loc, logs );
+}
+
+/*
+ * Write the logs to the disk from the static logs and free
+ * the used memory.
+ */
 int terminate_logs( char* db_loc ){
     if( logs != NULL ){
         if( write_catalogs( db_loc, logs ) != 1 ){

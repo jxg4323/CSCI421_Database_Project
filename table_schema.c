@@ -413,14 +413,13 @@ int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name){
 }
 
 /*
- * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
+ * Layout of the foreign_row is: ["a_1", "a_2", "r_1", "r_2"]
  * allocate or reallocate memory for the addidtion of the next foreign reference.
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
-int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count){
+int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count, char* f_name){
 	int last = t_cat->foreign_size;
-	char *f_name = foreign_row[0];
 	table_catalog* for_cat = get_catalog_p( logs, f_name );
 	if( for_cat == NULL ){
 		fprintf(stderr, "Foreign Table: %s doesn't exist.\n", f_name );
@@ -432,13 +431,13 @@ int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, i
 	int s = (f_key_count);
 	int c = 0;
 	int t = 0;
-	for( int j = 1; j<(2*f_key_count)+1; j++ ){ 
+	for( int j = 0; j<(2*f_key_count); j++ ){ 
 		int tmp = 0;
-		if( j <= s ){
+		if( j < s ){
 			tmp = get_attr_loc( t_cat, foreign_row[j] ); //TODO: add error if attribute doesn't exists
 			o_arr[c] = tmp;
 			c++;
-		}else if( j > s ){
+		}else if( j >= s ){
 			tmp = get_attr_loc( for_cat, foreign_row[j] );
 			f_arr[t] = tmp;
 			t++;
@@ -511,6 +510,8 @@ int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){
 	// Find attribute locations of each of provided attributes
 	for( int i = 0; i<num_keys; i++ ){
 		tmp[i] = get_attr_loc( t_cat, prim_names[i] );
+		// mark each attribute as apart of the primary key in their constraints
+		t_cat->attributes[tmp[i]].primarykey = 1;
 	}
 	// Allocate memory for primary key size
 	manage_prim_tuple( t_cat, num_keys, false );
@@ -920,7 +921,7 @@ void delete_table( table_catalog* tcat ){
  */
 void pretty_print_catalogs(catalogs* logs){
 	for(int i = 0; i < logs->table_count; i++){
-		pretty_print_table( &(logs->all_tables[i]) );
+		pretty_print_table( logs, &(logs->all_tables[i]) );
 	}
 }
 
@@ -928,7 +929,7 @@ void pretty_print_catalogs(catalogs* logs){
  * Print Table information including deleted attributes, foreign
  * relations, and unique tupes.to stdout.
  */
-void pretty_print_table(table_catalog* tcat){
+void pretty_print_table(catalogs* logs, table_catalog* tcat){
 	printf("Table: \n{name: %s, deleted: %s, attribute_count: %d, "
 			"foreign_size: %d, primary_size: %d,"" unique_tuples: %d, " 
 			"Attributes: [\n",
@@ -938,7 +939,7 @@ void pretty_print_table(table_catalog* tcat){
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );
 	printf("Foreign Relations:\n");
 	// print relations
-	pretty_print_relations( tcat, tcat->relations, tcat->foreign_size );
+	pretty_print_relations( logs, tcat, tcat->relations, tcat->foreign_size );
 	printf("Unique Tuples:\n");
 	// print unique tuples
 	pretty_print_unique_tuples( tcat, tcat->unique_tuples, tcat->unique_size );
@@ -955,7 +956,7 @@ void pretty_print_attributes( attr_info* attributes, int size ){
 	}
 }
 
-void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size ){
+void pretty_print_relations( catalogs* logs, table_catalog* tcat, foreign_data* relations, int size ){
 	for( int i = 0; i<size; i++ ){
 		int tup_size = relations[i].tuple_size;
 		printf("\tForeign Table: '%s', Table ID: %d, Deleted: %d, Num of Attributes: %d,\n\t\tRelation: (",
@@ -970,10 +971,11 @@ void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int s
 		}
 		printf(") --> (");
 		for( int j = 0; j<tup_size; j++ ){
+			char * attr_name = get_attr_name( logs, relations[i].name, relations[i].for_attr_locs[j] );
 			if(j == tup_size-1){
-				printf("'%s'",tcat->attributes[relations[i].for_attr_locs[j]].name);
+				printf("%s.'%s'", relations[i].name, attr_name);
 			}else{
-				printf("'%s', ",tcat->attributes[relations[i].for_attr_locs[j]].name);
+				printf("%s.'%s', ", relations[i].name, attr_name);
 			}
 		}
 		printf(")\n");
