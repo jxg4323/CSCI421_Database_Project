@@ -641,6 +641,23 @@ int get_attr_loc(table_catalog *tcat, char *attr_name){
 }
 
 /*
+ * Based on the table catalog and attribute location in the table catalog
+ * Return index of attribute in a record for the table if found, o.w. -1
+ */
+int get_attr_idx(table_catalog *tcat, int attr_loc){
+    if(attr_loc > tcat->attribute_count){
+        return -1;
+    }
+    int idx = 0;
+    for(int i = 0; i < attr_loc; i++){
+        if(tcat->attributes[i].deleted == false){
+            idx++;
+        }
+    }
+    return idx;
+}
+
+/*
  * Check if the table name is already in use.
  * Return True if a table name is found, false otherwise.
  */
