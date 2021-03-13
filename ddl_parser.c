@@ -21,6 +21,7 @@ int parse_ddl_statement( char * statement ){
         logs = initialize_catalogs();
         manage_catalogs( logs, 0, false );
     }
+    free( temp );
 
     // switch statements checking for what the string starts with
 	if ( strcasecmp(command,"create") == 0 ){
@@ -109,6 +110,7 @@ int parse_create_statement( char * statement ){
         free(data[i]);
     }
     free( data );
+    free( temp );
     return res;
 }
 
@@ -148,6 +150,7 @@ int parse_drop_statement( char * statement ){
     drop_table_ddl( logs, name );
 
     free( name );
+    free( temp );
     return 0; 
 }
 
@@ -175,7 +178,7 @@ int parse_alter_statement( char * statement ){
         }
 
         int str_len = strlen(token);
-        data[i] = (char *)malloc(str_len*sizeof(char)); 
+        data[i] = (char *)malloc((str_len+1)*sizeof(char)); 
         strcpy(data[i], token);
 
         if( strcasecmp(token, "default") == 0 ){
@@ -198,8 +201,6 @@ int parse_alter_statement( char * statement ){
     // add empty token at end of data
     data[i] = (char *)malloc(sizeof(char));
     memset(data[i], '\0', sizeof(char));
-
-    print_tokens( data, total );
     
     int alt_res = alter_table( logs, total, data );
 
@@ -207,6 +208,7 @@ int parse_alter_statement( char * statement ){
         free(data[i]);
     }
     free( data );
+    free( temp );
 
     return 0;
 }
@@ -214,11 +216,11 @@ int parse_alter_statement( char * statement ){
 /*
  * Read the logs from the disk into the static variable.
  */
-void read_logs( char* db_loc ){
+int read_logs( char* db_loc ){
     if( logs == NULL ){
         logs = initialize_catalogs();
     }
-    read_catalogs( db_loc, logs );
+    return read_catalogs( db_loc, logs );
 }
 
 /*

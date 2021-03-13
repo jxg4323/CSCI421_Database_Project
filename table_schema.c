@@ -92,7 +92,7 @@ void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p
 	catalog->foreign_size = f_size;
 	catalog->primary_size = p_size;
 	catalog->unique_size = u_size;
-	catalog->table_name = (char *)malloc(strlen(table_name)*sizeof(char));
+	catalog->table_name = (char *)malloc((strlen(table_name)+1)*sizeof(char));
 	strcpy(catalog->table_name, table_name);
 	catalog->attributes = (attr_info*)malloc(a_size*sizeof(attr_info));
 	catalog->relations = (foreign_data*)malloc(f_size*sizeof(foreign_data));
@@ -107,7 +107,7 @@ void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p
 void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name){
 	attr->deleted = false;
 	attr->type = type;
-	attr->name =(char *)malloc(strlen(name)*sizeof(char));
+	attr->name =(char *)malloc((strlen(name)+1)*sizeof(char));
 	strcpy(attr->name, name);
 	attr->notnull = notnull;
 	attr->primarykey = primkey;
@@ -122,7 +122,7 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
 void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs){
 	fdata->deleted = false;
 	fdata->foreign_table_id = fid;
-	fdata->name = (char *)malloc(strlen(name)*sizeof(char));
+	fdata->name = (char *)malloc((strlen(name)+1)*sizeof(char));
 	strcpy(fdata->name, name);
 	fdata->tuple_size = size;
 	fdata->orig_attr_locs = (int *)malloc(size*sizeof(int));
@@ -238,10 +238,11 @@ int read_catalogs(char *db_loc, catalogs* logs){
 		fread(p_temp, sizeof(int), prim_count, fp);
 		init_primary_tuple(&(logs->all_tables[indx]), p_temp, prim_count);
 
-		if(feof(fp) || indx == (count -1)){ // read until end of file or no more tables
+		if(feof(fp) || indx >= (count -1)){ // read until end of file or no more tables
 			break;
 		}
-		free(temp);
+		free( temp );
+		free( p_temp );
 		indx++;
 	}
 	free(cat_file);
@@ -262,6 +263,12 @@ int write_catalogs(char *db_loc, catalogs* logs){
 	memset(cat_file, 0, file_len*sizeof(char));
 	strcat(cat_file, db_loc);
 	strcat(cat_file, TABLE_CATALOG_FILE);
+
+	// If there aren't any tables don't write the schema file.
+	if( logs->table_count == 0 ){
+		fprintf(stderr, "No tables were created.\n");
+		return -1;
+	}
 
 	fp = fopen(cat_file, "wb");
 	if(fp == NULL){
@@ -793,6 +800,7 @@ int type_conversion(char* type){
 	else if( strcasecmp(type, BOOLEAN) == 0){ result = 2; }
 	else if( strcasecmp(type, CHAR) == 0){ result = 3; }
 	else if( strcasecmp(type, VARCHAR) == 0){ result = 4; }
+	free( temp );
 	return result;
 }
 

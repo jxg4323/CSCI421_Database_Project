@@ -24,7 +24,7 @@ int char_occur_count( char* str, char c );
 int terminate_logs( char* db_loc );
 void print_tokens( char** tokens, int count );
 void print_logs( );
-void read_logs( char* db_loc );
+int read_logs( char* db_loc );
 
 
 #endif

@@ -131,18 +131,40 @@ int health_check( ){
 		int length = snprintf(NULL, 0, "%smetadata.dat", db_path);
 		char * meta_loc = (char*)malloc(sizeof(char)*length+1);
 		snprintf(meta_loc, length+1, "%smetadata.data", db_path);
+		int file_len = strlen(db_path) + TABLE_CATALOG_FILE_LEN;
+		char * cat_file = (char *)malloc(file_len*sizeof(char));
+		memset(cat_file, 0, file_len*sizeof(char));
+		strcat(cat_file, db_path);
+		strcat(cat_file, TABLE_CATALOG_FILE);
 		int size = 0;
 		if( access( meta_loc, F_OK ) == 0 ){ // File exists
 			FILE* fp = fopen(meta_loc, "rb");
 			fseek( fp, 0, SEEK_END );
 			size = ftell( fp );
 			restart = (size > 0) ? 1 : 0; // only restart if metadata file has contents
+			fclose( fp );
+		}else{
+			restart = 0;
 		}
+
+		// confirm table schema is there as well
+		if( access( cat_file, F_OK) == 0 ){
+			FILE* fp = fopen(cat_file, "rb");
+			fseek( fp, 0, SEEK_END );
+			size = ftell( fp );
+			restart = ( size > 0 ) ? 1: 0; 
+			fclose( fp );
+		}else{
+			restart = 0;
+		}
+
+		free( cat_file );
 		free( meta_loc );
 	}else if (ENOENT == errno){
 		fprintf(stderr, "ERROR: Directory in path %s doesn't exist.\n", db_path );
 		restart = -1;
 	}
+	closedir(directory);
 	return restart;
 }
 
@@ -163,7 +185,8 @@ int run(int argc, char *argv[]){
 		if(results){
 			printf("------------RESTARTING DATABASE----------------\n");
 			create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
-			read_logs( db_path );
+			if( read_logs( db_path ) == -1 ){ return -1; }
+			print_logs( );
 		}else{
 			printf("TERMINATING PROGRAM.\n");
             return 0;
@@ -196,14 +219,25 @@ int run(int argc, char *argv[]){
 	while((charRead = getdelim(&input, &n, 59, stdin)) > 0){ //ascii for semicolon = 59
 
 		//make copy of string so its not destroyed in tokenizing
-		tokenString = (char *)malloc(charRead*sizeof(char));
+		tokenString = (char *)malloc((charRead+1)*sizeof(char));
 		strcpy(tokenString, input);
 
 		//ignore whitespace by tokenizing
 		char delims[] = DELIMITER;
 		char *token = strtok(tokenString, delims);
+
+		if( strcasecmp(token, "insert") == 0){
+			union record_item* record = (union record_item*)malloc(sizeof(union record_item)*2);
+			record[0].i = 1;
+			memcpy( record[1].v, "James\0", 6*sizeof(char));
+			insert_record( 1, record );
+			printf("HERE1\n");
+			free( record );
+		}
+
     	if((quit = strcasecmp(token, "quit")) == 0){
 			printf("EXITING PROGRAM....\n");
+			print_logs( );
 			free( tokenString );
             break;
 		}else{
@@ -231,12 +265,7 @@ void usage(bool error){
 int main(int argc, char *argv[])
 {
 
-	int result = 0;
-	int consts[3] = {NOTNULL, PRIMARYKEY, UNIQUE};
-	//char *db_loc = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
-	char *db_loc = argv[1];
-
-	run(argc,argv);
+	int run_result = run( argc,argv );
 
 	return 0;
 }
@@ -264,7 +293,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
     current = 4; // skip over empty string
     while(current < token_count && valid ){
-        if(strcmp(tokens[current], "primarykey") == 0){
+        if(strcasecmp(tokens[current], "primarykey") == 0){
             current++;
             char ** prims = (char **)malloc(sizeof(char *));
             int prim_count = 0;
@@ -285,7 +314,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( prims[i] );
             }
             free( prims );
-        } else if(strcmp(tokens[current], "unique") == 0){
+        } else if(strcasecmp(tokens[current], "unique") == 0){
             current++;
             char ** uniques = (char **)malloc(sizeof(char *));
             int uniq_count = 0;
@@ -306,31 +335,35 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( uniques[i] );
             }
             free( uniques );
-        } else if(strcmp(tokens[current], "foreignkey") == 0){
+        } else if(strcasecmp(tokens[current], "foreignkey") == 0){
             current++;
             int foreign_count = 1;
+            char *f_name;
             char **foreigns = (char **)malloc(sizeof(char *));
-            int key_count = 0;
-            while(strcmp(tokens[current], "references") != 0){
-                foreign_count++;
-                key_count++;
+            int indx = 0;
+            while(strcasecmp(tokens[current], "references") != 0){
                 foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[foreign_count-1], tokens[current]);
+                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[indx], tokens[current]);
+                indx++;
+                foreign_count++;
                 current++;
             }
             current++;
-            strcpy(foreigns[0], tokens[current]);
+            f_name = (char*)malloc(strlen(tokens[current]+1)*sizeof(char));
+            memset( f_name, '\0', (strlen(tokens[current])+1)*sizeof(char));
+            strcpy( f_name, tokens[current] );
+            current++;
             while(strcmp(tokens[current], "") != 0){
-                foreign_count++;
                 foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[foreign_count-1], tokens[current]);
+                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[indx], tokens[current]);
+                foreign_count++;
                 current++;
             }
-            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
+            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, indx, f_name);
             if(added == -1){
                 valid = false;
             }
@@ -339,20 +372,23 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( foreigns[i] );
             }
             free( foreigns );
+            free( f_name );
         } else {
             int name_idx = current++;
             int type_idx = current++;
             int constraints[3] = { 0 };
             while(strcmp(tokens[current], "") != 0 && valid != false){
-                if(strcmp(tokens[current], "notnull") == 0){
+                if(strcasecmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
                     current++;
-                } else if(strcmp(tokens[current], "primarykey") == 0){
+                } else if(strcasecmp(tokens[current], "primarykey") == 0){
                     constraints[1] = 1;
                     current++;
-                } else if(strcmp(tokens[current], "unique") == 0){
+                } else if(strcasecmp(tokens[current], "unique") == 0){
                     constraints[2] = 1;
                     current++;
+                } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
+                	current++;
                 } else {
                     valid = false;
                 }
