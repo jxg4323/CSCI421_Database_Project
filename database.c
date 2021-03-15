@@ -1,3 +1,9 @@
+/**
+ * Authors: James Green, Alex Frankel, Kelsey Dunn, Varnit Tewari
+ * Due Date: 3/12/2021
+ * Assignment: Phase 2 Database Project
+ * Professor: Scott Johnsson
+ */
 #include "database1.h"
 #include "database.h"
 #include "ddlparse.h"
@@ -19,9 +25,9 @@ int execute_non_query(char * statement){
 	char delimit[] = " \t\r\n\0";
 	char *token = strtok(newStr, delimit);
 
-	if(strncmp(token, "create", 6) == 0 || strncmp(token, "alter", 5) == 0 || strncmp(token, "drop", 4) == 0){
+	if(strncasecmp(token, "create", 6) == 0 || strncasecmp(token, "alter", 5) == 0 || strncasecmp(token, "drop", 4) == 0){
 		token = strtok(NULL, delimit);
-		if(strncmp(token, "table", 5) == 0){
+		if(strncasecmp(token, "table", 5) == 0){
 			int result = parse_ddl_statement(statement);
 			if(result == 0){
 				printf("SUCCESS\n");
@@ -37,6 +43,7 @@ int execute_non_query(char * statement){
 			//bad query.
 		}
 	}else{
+		// TODO: IMPLEMENT DML PARSER CALL (insert, update, delete)
 		fprintf(stderr,"ERROR: either bad query or query was meant for the DML parser.\n");
 		free( newStr );
 		return -1;
@@ -186,7 +193,6 @@ int run(int argc, char *argv[]){
 			printf("------------RESTARTING DATABASE----------------\n");
 			create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
 			if( read_logs( db_path ) == -1 ){ return -1; }
-			print_logs( );
 		}else{
 			printf("TERMINATING PROGRAM.\n");
             return 0;
@@ -226,21 +232,18 @@ int run(int argc, char *argv[]){
 		char delims[] = DELIMITER;
 		char *token = strtok(tokenString, delims);
 
-		if( strcasecmp(token, "insert") == 0){
-			union record_item* record = (union record_item*)malloc(sizeof(union record_item)*2);
-			record[0].i = 1;
-			memcpy( record[1].v, "James\0", 6*sizeof(char));
-			insert_record( 1, record );
-			printf("HERE1\n");
-			free( record );
-		}
+		// TODO: FOR PHASE 2, test with new records
 
-    	if((quit = strcasecmp(token, "quit")) == 0){
-			printf("EXITING PROGRAM....\n");
+		// View All Current Table Schemas in Volatile Memory
+		if( strcasecmp(token, "print") == 0){
+			printf("Current status of all Table Schemas in memory\n");
+			free( tokenString );
 			print_logs( );
+		}else if((quit = strcasecmp(token, "quit")) == 0){
+			printf("EXITING PROGRAM....\n");
 			free( tokenString );
             break;
-		}else{
+		}else{ // TODO: maybe have token check for insert, update, delete
 			execute_non_query(input);
 			free( tokenString );
 		}
@@ -434,7 +437,7 @@ int drop_table_ddl( catalogs *cat, char *name ){
 }
 
 int alter_table(catalogs *cat, int token_count, char **tokens){
-    if(token_count != 6 && token_count != 7 && token_count != 9) {
+    if(token_count != 6 && token_count != 7 && token_count != 9 && token_count != 10) {
         fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
         return -1;
     }
@@ -444,7 +447,12 @@ int alter_table(catalogs *cat, int token_count, char **tokens){
         		tokens[7] = NULL;
         	}
             return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[7]);
-        } else { // add
+        } else if(token_count == 10){
+        	if( strcasecmp(tokens[8],"null") == 0 ){
+        		tokens[8] = NULL;
+        	}
+            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[8]);
+        }else { // add
             return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], NULL);
         }
     }else if( strcasecmp(tokens[3], "drop") == 0 ){

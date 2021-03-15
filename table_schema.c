@@ -777,7 +777,7 @@ void terminate_catalog(catalogs *logs){
 		free( logs->all_tables[i].attributes );
 		free( logs->all_tables[i].relations );
 		// confirm primary key hasn't already been freed
-		if( logs->all_tables[i].primary_size > 0){
+		if( logs->all_tables[i].primary_size >= 0){
 			free( logs->all_tables[i].primary_tuple );
 		}
 	}

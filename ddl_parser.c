@@ -21,20 +21,23 @@ int parse_ddl_statement( char * statement ){
         logs = initialize_catalogs();
         manage_catalogs( logs, 0, false );
     }
-    free( temp );
 
     // switch statements checking for what the string starts with
 	if ( strcasecmp(command,"create") == 0 ){
+        free( temp );
 		return parse_create_statement(statement);
 	}
 	else if ( strcasecmp(command,"drop") == 0 ){
+        free( temp );
 		return parse_drop_statement(statement);
 	}
 	else if ( strcasecmp(command,"alter") == 0 ){
+        free( temp );
 		return parse_alter_statement(statement);
 	}
 	else{
         fprintf(stderr, "ERROR: command unknown %s\n", command);
+        free( temp );
 		return -1;
 	}
 }
