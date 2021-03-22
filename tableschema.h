@@ -51,6 +51,7 @@ typedef struct attribute_info{
 
 typedef struct table_catalog{
     int id;
+    int storage_manager_loc;
     bool deleted; // DON'T STORE --> if True then don't write
     // Sizes of arrays with deletions
     int attribute_count;
@@ -89,7 +90,7 @@ void delete_table( table_catalog* tcat );    //   --> GOOD
 
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD
-void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
+void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
 void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);  //   --> GOOD
 void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs);   //   --> GOOD
 void init_unique_tuple(unique* udata, int tup_size, int *tuple);   //   --> GOOD

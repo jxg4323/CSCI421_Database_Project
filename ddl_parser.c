@@ -150,11 +150,11 @@ int parse_drop_statement( char * statement ){
         i++;
     }
 
-    drop_table_ddl( logs, name );
+    int drop_result = drop_table_ddl( logs, name );
 
     free( name );
     free( temp );
-    return 0; 
+    return drop_result; 
 }
 
 /*
@@ -213,7 +213,7 @@ int parse_alter_statement( char * statement ){
     free( data );
     free( temp );
 
-    return 0;
+    return alt_res;
 }
 
 /*

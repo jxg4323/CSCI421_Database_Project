@@ -85,8 +85,9 @@ void manage_unique_tuple(table_catalog *t_cat, int size, bool increase){
  * memory for the array of attributes but don't fill. User is responsible
  * for freeing the table_name pointer after call.
  */
-void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name){
+void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int f_size, int p_size, int u_size, char *table_name){
 	catalog->id = tid;
+	catalog->storage_manager_loc = meta_id;
 	catalog->deleted = false;
 	catalog->attribute_count = a_size;
 	catalog->foreign_size = f_size;
@@ -176,8 +177,9 @@ int read_catalogs(char *db_loc, catalogs* logs){
 	fread(&(count), sizeof(int), 1, fp);
 	manage_catalogs( logs, count, false ); // assume the table catalogs array hasn't been allocated
 	while( 1 ){
-		int t_id, a_count, foreign_count, unique_count, prim_count, name_size;
+		int t_id, storage_loc, a_count, foreign_count, unique_count, prim_count, name_size;
 		fread(&t_id, sizeof(int), 1, fp);
+		fread(&storage_loc, sizeof(int), 1, fp);
 		fread(&a_count, sizeof(int), 1, fp);
 		fread(&foreign_count, sizeof(int), 1, fp);
 		fread(&unique_count, sizeof(int), 1, fp);
@@ -186,7 +188,7 @@ int read_catalogs(char *db_loc, catalogs* logs){
 		char *temp = (char *)malloc((name_size+1)*sizeof(char));
 		memset(temp, '\0', (name_size+1)*sizeof(char));
 		fread(temp, sizeof(char), name_size, fp);
-		init_catalog( &(logs->all_tables[indx]), t_id, a_count, foreign_count, prim_count, unique_count, temp );
+		init_catalog( &(logs->all_tables[indx]), t_id, storage_loc, a_count, foreign_count, prim_count, unique_count, temp );
 		// read attribute info 
 		char *a_name;
 		for(int i = 0; i < a_count; i++){
@@ -286,6 +288,7 @@ int write_catalogs(char *db_loc, catalogs* logs){
 		tru_unicount = get_unique_count_no_deletes( &(logs->all_tables[indx] ));
 		int name_size = strlen(logs->all_tables[indx].table_name);
 		fwrite(&(logs->all_tables[indx].id), sizeof(int), 1, fp);
+		fwrite(&(logs->all_tables[indx].storage_manager_loc), sizeof(int), 1, fp);
 		fwrite(&tru_acount, sizeof(int), 1, fp);
 		fwrite(&tru_relcount, sizeof(int), 1, fp);
 		fwrite(&tru_unicount, sizeof(int), 1, fp);
@@ -344,7 +347,7 @@ int new_catalog(catalogs *logs, char *table_name){
 	}
 	int last = logs->table_count;
 	manage_catalogs( logs, logs->table_count+1, true );
-	init_catalog( &(logs->all_tables[last]),last,0,0,0,0,table_name );
+	init_catalog( &(logs->all_tables[last]),last,0,0,0,0,0,table_name );
 	return last;
 }
 
@@ -938,10 +941,11 @@ void pretty_print_catalogs(catalogs* logs){
  * relations, and unique tupes.to stdout.
  */
 void pretty_print_table(catalogs* logs, table_catalog* tcat){
-	printf("Table: \n{name: %s, deleted: %s, attribute_count: %d, "
+	printf("Table: name: %s\n{Catalog Id: %d, storage_loc: %d, deleted: %s, attribute_count: %d, "
 			"foreign_size: %d, primary_size: %d,"" unique_tuples: %d, " 
 			"Attributes: [\n",
-			tcat->table_name, tcat->deleted ? "TRUE" : "FALSE", tcat->attribute_count, 
+			tcat->table_name, tcat->id, tcat->storage_manager_loc,
+			tcat->deleted ? "TRUE" : "FALSE", tcat->attribute_count, 
 			tcat->foreign_size, tcat->primary_size, tcat->unique_size );
 	// print attributes
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );

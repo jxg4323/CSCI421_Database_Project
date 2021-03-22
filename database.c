@@ -293,7 +293,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     }
     int table_index = cat->table_count;
     manage_catalogs(cat, cat->table_count+1, true);
-    init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
+    init_catalog(&(cat->all_tables[table_index]), table_index, 0, 0, 0, 0, 0, tokens[current]);
     current = 4; // skip over empty string
     while(current < token_count && valid ){
         if(strcasecmp(tokens[current], "primarykey") == 0){
@@ -419,6 +419,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     		delete_table( &(cat->all_tables[table_index]) );
     		return -1;
     	}
+    	cat->all_tables[table_index].storage_manager_loc = meta_id;
     	free( data_types );
         return meta_id;
     }
@@ -430,7 +431,7 @@ int drop_table_ddl( catalogs *cat, char *name ){
     	fprintf(stderr, "ERROR: attempted to drop an unknown table %s\n", name);
     	return idx;
     }
-    int success = drop_table( cat->all_tables[idx].id );
+    int success = drop_table( cat->all_tables[idx].storage_manager_loc );
     if( success == -1 ){ return success; }
     delete_table( &(cat->all_tables[idx]) );
     return 1;
@@ -483,11 +484,11 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         return -1;
     }
     union record_item **records;
-    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    int rec_count = get_records(cat->all_tables[table_loc].storage_manager_loc, &records);
     if( rec_count == -1 ){
         return -1;
     }
-    success = drop_table(cat->all_tables[table_loc].id);
+    success = drop_table(cat->all_tables[table_loc].storage_manager_loc);
     if( success == -1 ){
         return -1;
     }
@@ -503,7 +504,7 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     if( new_id == -1 ){
         return -1;
     }
-    cat->all_tables[table_loc].id = new_id;
+    cat->all_tables[table_loc].storage_manager_loc = new_id;
     union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
     for(int i = 0; i < rec_count; i++){
         int offset = 0;
@@ -534,7 +535,7 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     }
 
     union record_item **records;
-    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    int rec_count = get_records(cat->all_tables[table_loc].storage_manager_loc, &records);
     if( rec_count == -1 ){
         return -1;
     }
@@ -544,7 +545,7 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
         return -1;
     }
 
-    success = drop_table(cat->all_tables[table_loc].id);
+    success = drop_table(cat->all_tables[table_loc].storage_manager_loc);
     if( success == -1 ){
         return -1;
     }
@@ -560,7 +561,7 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     if( new_id == -1 ){
         return -1;
     }
-    cat->all_tables[table_loc].id = new_id;
+    cat->all_tables[table_loc].storage_manager_loc = new_id;
     int type_int = type_conversion(type);
     union record_item new_record;
     if(value == NULL){
