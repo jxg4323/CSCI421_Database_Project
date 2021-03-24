@@ -51,6 +51,7 @@ typedef struct attribute_info{
 
 typedef struct table_catalog{
     int id;
+    int storage_manager_loc;
     bool deleted; // DON'T STORE --> if True then don't write
     // Sizes of arrays with deletions
     int attribute_count;
@@ -78,9 +79,9 @@ int get_attribute_count_no_deletes(table_catalog* t_cat);    //   --> GOOD
 int get_relation_count_no_deletes(table_catalog* tcat);    //   --> GOOD
 int get_unique_count_no_deletes(table_catalog* tcat);    //   --> GOOD
 void pretty_print_catalogs(catalogs* logs);    //   --> GOOD
-void pretty_print_table(table_catalog* tcat);    //   --> GOOD
+void pretty_print_table(catalogs* logs,table_catalog* tcat);    //   --> GOOD
 void pretty_print_attributes( attr_info* attributes, int size );    //   --> GOOD
-void pretty_print_relations( table_catalog* tcat, foreign_data* relations, int size );    //   --> GOOD
+void pretty_print_relations( catalogs* logs, table_catalog* tcat, foreign_data* relations, int size );    //   --> GOOD
 void pretty_print_unique_tuples( table_catalog* tcat, unique* tuples, int size );    //   --> GOOD
 void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size );    //   --> GOOD
 char *get_attr_name( catalogs* logs, char *table_name, int attr_id );    //   --> GOOD
@@ -89,7 +90,7 @@ void delete_table( table_catalog* tcat );    //   --> GOOD
 
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD
-void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
+void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
 void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);  //   --> GOOD
 void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs);   //   --> GOOD
 void init_unique_tuple(unique* udata, int tup_size, int *tuple);   //   --> GOOD
@@ -128,14 +129,14 @@ int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constra
 int remove_attribute(catalogs* logs, table_catalog* t_cat, char *attr_name);   //   --> GOOD
 
 /*
- * Layout of the foreign_row is: ["foreign_tabe_name", "a_1", "a_2", "r_1", "r_2"]
+ * Layout of the foreign_row is: ["a_1", "a_2", "r_1", "r_2"]
  * allocate or reallocate memory for the addidtion of the next foreign reference.
  * Confirm the other attributes in the foreign table exist as well as the foreign 
  * table itself, if not return -1.
  * 
  * Return 1 with success of foreign info addition and -1 otherwise.
  */
-int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count);   //   --> GOOD
+int add_foreign_data(catalogs* logs, table_catalog* t_cat, char **foreign_row, int f_key_count, char* f_name);   //   --> GOOD
 
 /*
  * The foreign row is the an array of tokens that are as follows:
@@ -241,6 +242,7 @@ int delete_uniq_tup( table_catalog* tcat, int attr_id );
  * Write catalog information to disk and free pointer.
  */
 void terminate_catalog(catalogs *logs); //   --> GOOD
+
 
 
 #endif

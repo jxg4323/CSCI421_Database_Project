@@ -1,7 +1,12 @@
-#include <string.h>
-#include <limits.h>
+/**
+ * Authors: James Green, Alex Frankel, Kelsey Dunn, Varnit Tewari
+ * Due Date: 3/12/2021
+ * Assignment: Phase 2 Database Project
+ * Professor: Scott Johnsson
+ */
 #include "database1.h"
 #include "database.h"
+#include "ddlparse.h"
 
 /*
  * This function will be used to execute SQL statements that
@@ -13,28 +18,38 @@
            -1 otherwise
  */
 int execute_non_query(char * statement){
-	//TODO: multiline queries -> loop user input until semicolon
-	char *token = strtok(statement, " ");
-	if(strcmp(token, "create") == 0 || strcmp(token, "alter") == 0 || strcmp(token, "drop") == 0){
-		token = strtok(NULL, " ");
-		if(strcmp(token, "table") == 0){
-			parse_ddl_statement(statement); //assume this works
-			printf("SUCCESS\n");
-			//int result = parse_ddl_statement(input);
-			//if(result == 0){
-			//	prinf("SUCCESS\n");
-			//}else{
-			//      printf("ERROR\n");
-			//}
+	char *newStr = (char *)malloc((strlen(statement)+1)*sizeof(char));
+	memset( newStr, '\0', (strlen(statement)+1)*sizeof(char));
+	strcpy(newStr, statement);
+
+	char delimit[] = " \t\r\n\0";
+	char *token = strtok(newStr, delimit);
+
+	if(strncasecmp(token, "create", 6) == 0 || strncasecmp(token, "alter", 5) == 0 || strncasecmp(token, "drop", 4) == 0){
+		token = strtok(NULL, delimit);
+		if(strncasecmp(token, "table", 5) == 0){
+			int result = parse_ddl_statement(statement);
+			if(result == 0){
+				printf("SUCCESS\n");
+			}else{
+				fprintf(stderr,"ERROR\n");
+			}
+			free( newStr );
 			return 0;
 		}else{
-			printf("ERROR\n");
-			//ignore for now. either send to dml or bad query.
+			fprintf(stderr, "ERROR: BAD QUERY. \n");
+			free( newStr );
+			return -1;
+			//bad query.
 		}
 	}else{
-		printf("ERROR\n");
+		// TODO: IMPLEMENT DML PARSER CALL (insert, update, delete)
+		fprintf(stderr,"ERROR: either bad query or query was meant for the DML parser.\n");
+		free( newStr );
+		return -1;
+		//either dml or bad query
 	}
-	return 1;
+	return 0;
 }
 
 // This function will be used when executing database queries that return tables of data.
@@ -49,163 +64,211 @@ int execute_query(char * query, union record_item *** result){
  * @return 0 on success; -1 on failure.
  */
 int shutdown_database(){
-	//TODO: Free up heap memory
 	printf("-------TERMINATING DATABASE-----------\n");
-	//terminate_database();
+	int result = 0;
+	result = terminate_logs( db_path );
+	result = terminate_database();
+	free( db_path );
 	return 0;
 }
 
+/*
+ * Loops through the provided string and returns true
+ * if every character is a digit and false o.w.
+ */
+bool is_number( char *str ){
+	bool isNum = true;
+	for( int i = 0; i < strlen(str); i++ ){
+		if( !isdigit(str[i]) ){ isNum = false; }
+	}
+	return isNum;
+}
 
-int * arg_manager(bool restart, char const *argv[], int argc){
-	// retreive and verify arguments validity
-	//incorrect number of arguments
-	//if(argc != 3){
-	//	printf("Incorrect number of arguments");
-	//}
-	//return 0;
+/*
+ * Returns true 1 if the arguments are valid, false 0 if not.
+ */
+int arg_manager(bool restart, char *argv[], int argc){
+	if(restart){
+		//if restart is true
+		//doesn't matter if args 3 & 4 are given bc they get ignored
+		if(argc == 2 || argc == 4){
+			printf("ARGUMENTS VALID....\n");
+			printf("ATTEMPTING DATABASE RESTART...\n");
+		}else{
+			fprintf(stderr, "INVALID NUMBER OF ARGUMENTS.\n");
+			usage( true );
+    		return 0;
+		}
+	}else{
+		if(argc == 4){
+			bool arg2check = is_number(argv[2]);
+			bool arg3check = is_number(argv[3]);
+			if(arg2check && arg3check){
+				printf("ARGUMENTS VALID....\n");
+            			printf("ATTEMPTING NEW DATABASE START...\n");
+			}else{
+				if(!arg2check){
+					fprintf(stderr, "ERROR: INVALID ARGUMENT... page_size: '%s' isn't a number \n", argv[2]);
+				}else if( !arg3check ){
+					fprintf(stderr, "ERROR: INVALID ARGUMENT... buffer_size: '%s' isn't a number \n", argv[3]);
+				}else{
+					fprintf(stderr, "ERROR: BOTH page_size: '%s' and buffer_size: '%s' are invalid numbers\n", argv[2], argv[3]);
+				}
+				return 0;
+			}
+		}else{
+			usage( true );
+    		return 0;
+		}
+	}
+	return 1;
+}
 
-	// if this is a new database ignore the args and return null
-	// if arguments pass requirements return as array of page size and buffer 
+/*
+ * Open the directory and confirm the metadata file exists
+ * and isn't empty.
+ * Return 1 to restart the database
+ * 		  0 to create a new database
+ *       -1 with an error
+ */
+int health_check( ){
+	int restart = 0;
+	DIR* directory = opendir( db_path );
+	if(directory){ // if directory can be opened check metadata file
+		int length = snprintf(NULL, 0, "%smetadata.dat", db_path);
+		char * meta_loc = (char*)malloc(sizeof(char)*length+1);
+		snprintf(meta_loc, length+1, "%smetadata.data", db_path);
+		int file_len = strlen(db_path) + TABLE_CATALOG_FILE_LEN;
+		char * cat_file = (char *)malloc(file_len*sizeof(char));
+		memset(cat_file, 0, file_len*sizeof(char));
+		strcat(cat_file, db_path);
+		strcat(cat_file, TABLE_CATALOG_FILE);
+		int size = 0;
+		if( access( meta_loc, F_OK ) == 0 ){ // File exists
+			FILE* fp = fopen(meta_loc, "rb");
+			fseek( fp, 0, SEEK_END );
+			size = ftell( fp );
+			restart = (size > 0) ? 1 : 0; // only restart if metadata file has contents
+			fclose( fp );
+		}else{
+			restart = 0;
+		}
+
+		// confirm table schema is there as well
+		if( access( cat_file, F_OK) == 0 ){
+			FILE* fp = fopen(cat_file, "rb");
+			fseek( fp, 0, SEEK_END );
+			size = ftell( fp );
+			restart = ( size > 0 ) ? 1: 0;
+			fclose( fp );
+		}else{
+			restart = 0;
+		}
+
+		free( cat_file );
+		free( meta_loc );
+	}else if (ENOENT == errno){
+		fprintf(stderr, "ERROR: Directory in path %s doesn't exist.\n", db_path );
+		restart = -1;
+	}
+	closedir(directory);
+	return restart;
 }
 
 
-int run(char *argv[]){
-	// keep complexity out of main loop
-	// continuously pass string lines to the ddl parser 
-	// ignoring whitespace (/s, /n, /r, /t) and only end lines with ';'
+int run(int argc, char *argv[]){
+	if( argv[1] != NULL ){
+		int length = strlen(argv[1]);
+		db_path = (char *)malloc((length+1)*sizeof(char));
+		strcpy(db_path, argv[1]);
+	}else{
+		usage(true);
+		return -1;
+	}
+	int restart = health_check( );
+	if(restart == 1){
+		//if directory exists, call restart
+		int results = arg_manager(true, argv, argc);
+		if(results){
+			printf("------------RESTARTING DATABASE----------------\n");
+			create_database(argv[1], 0, 0, true); //create_db calls restart in storagemanager
+			if( read_logs( db_path ) == -1 ){ return -1; }
+		}else{
+			printf("TERMINATING PROGRAM.\n");
+            return 0;
+		}
+	}else if( restart == 0) {
+		//if directory exists but no file contents, call start
+		int results = arg_manager(false, argv, argc);
+		if(results){
+			printf("------------CREATING DATABASE----------------\n");
+    		create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
+			printf("DATABASE CREATED SUCCESSFULLY.\n");
+		}else{
+			fprintf(stderr,"ERROR: WASN'T ABLE TO CREATE NEW DATABASE. TERMINATING PROGRAM.\n");
+            return -1;
+		}
+	}else{
+		usage( true );
+		return -1;
+	}
 
-	printf("PATH: %s\n", *argv);
-	//TODO: add logic for restart db
-	printf("------------CREATING DATABASE----------------\n");
-	create_database(argv[1], atoi(argv[2]), atoi(argv[3]), false);
 
 	//loop for user input
-	char input[1024];
-	int quit = strcmp(input, "quit;");
-	while(quit != 0){
-		printf("Enter SQL query: ");
-		fgets(input, 1024, stdin); //get user input
-		quit = strncmp(input, "quit;", 5); //check if quit
+	char *input = NULL;
+	ssize_t n = 1024;
+	ssize_t charRead;
+	int quit = -1; //initialize quit
+	char *tokenString;
 
-		//if not quit, tokenize
-		if(quit != 0){
+	printf("Enter SQL query: ");
+	while((charRead = getdelim(&input, &n, 59, stdin)) > 0){ //ascii for semicolon = 59
+
+		//make copy of string so its not destroyed in tokenizing
+		tokenString = (char *)malloc((charRead+1)*sizeof(char));
+		strcpy(tokenString, input);
+
+		//ignore whitespace by tokenizing
+		char delims[] = DELIMITER;
+		char *token = strtok(tokenString, delims);
+
+		// TODO: FOR PHASE 2, test with new records
+
+		// View All Current Table Schemas in Volatile Memory
+		if( strcasecmp(token, "print") == 0){
+			printf("Current status of all Table Schemas in memory\n");
+			free( tokenString );
+			print_logs( );
+		}else if((quit = strcasecmp(token, "quit")) == 0){
+			printf("EXITING PROGRAM....\n");
+			free( tokenString );
+            break;
+		}else{ // TODO: maybe have token check for insert, update, delete
 			execute_non_query(input);
+			free( tokenString );
 		}
+		printf("Enter SQL query: ");
 	}
+	free(input);
+
 	shutdown_database();
+	printf("DATABASE SHUTDOWN SUCCESSFUL.\n");
 	return 0;
 }
 
 void usage(bool error){
 	if( error ){
-		fprintf( stderr, "./database <db_loc> <page_size> <buffer_size>\n" );
+		fprintf( stderr, "USAGE: ./database <db_loc> <page_size> <buffer_size>\n" );
 	}else{
-		fprintf( stdout, "./database <db_loc> <page_size> <buffer_size>\n" );
+		fprintf( stdout, "USAGE: ./database <db_loc> <page_size> <buffer_size>\n" );
 	}
 }
 
-int main(int argc, char const *argv[])
+
+int main(int argc, char *argv[])
 {
-	int result = 0;
-	int consts[3] = {NOTNULL, PRIMARYKEY, UNIQUE};
-	char *db_loc = "/home/stu2/s17/jxg4323/Courses/CSCI421/Project/TestDb/";
-	char *prim = (char *)malloc(10*sizeof(char));
-	char *sprim = (char *)malloc(10*sizeof(char));
-	char **uns = (char **)malloc(2*sizeof(char *));
-	char **row = (char **)malloc(3*sizeof(char *));
-	row[0] = "second_table\0";
-	row[1] = "TEST\0";
-	row[2] =  "SECONDS\0";
-	prim = "FUN_ID\0";
-	uns[0] = "TEST\0";
-	uns[1] = "NEXT\0";
 
-	sprim = "SEC_ID\0";
-	char for_row[3][15] = {"second_table\0", "TEST\0",  "SECONDS\0"};
-	catalogs* logs = initialize_catalogs();
-	result = new_catalog( logs, "first_table" );
-	result = add_attribute( &(logs->all_tables[0]), "FUN_ID", INTEGER, consts );
-	result = add_attribute( &(logs->all_tables[0]), "TEST", CHAR, consts );
-	result = add_attribute( &(logs->all_tables[0]), "NEXT", VARCHAR, consts );
-	result = add_primary_key( &(logs->all_tables[0]), &prim, 1 );
-	result = add_unique_key( &(logs->all_tables[0]), uns, 2 );
-	result = new_catalog( logs, "second_table" );
-	result = add_attribute( &(logs->all_tables[1]), "SEC_ID", INTEGER, consts );
-	result = add_attribute( &(logs->all_tables[1]), "SECONDS", CHAR, consts );
-	result = add_attribute( &(logs->all_tables[1]), "FAV_COLOR", VARCHAR, consts );
-	result = add_primary_key( &(logs->all_tables[1]), &sprim, 1 );
-
-	// add foreign table after tables defined
-	result = add_foreign_data( logs, &(logs->all_tables[0]), row, 1);
-
-	// Before delete
-	pretty_print_catalogs( logs );
-
-	printf("--------REMOVE & WRITE CHECKS--------\n");
-	result = new_catalog( logs, "first_table" );
-	//result = remove_unique_key( &(logs->all_tables[0]), uns, 2 );
-	//result = remove_primary_key( &(logs->all_tables[0]) );
-	//result = remove_foreign_data( logs, &(logs->all_tables[0]), row, 1 );
-	//result = remove_attribute( logs, &(logs->all_tables[0]), "TEST" );
-
-	write_catalogs( db_loc, logs );
-
-	pretty_print_catalogs( logs );
-
-	terminate_catalog( logs );
-	printf("--------READ CATALOGS---------\n");
-	logs = initialize_catalogs();
-	read_catalogs( db_loc, logs );
-
-	pretty_print_catalogs( logs );
-
-	printf("-------NEW FUNCTIONS---------\n");
-	printf("%s primary key attribute is %s\n", logs->all_tables[0].table_name, get_attr_name( logs, logs->all_tables[0].table_name, 0));
-	int *tmp = get_table_data_types( &(logs->all_tables[0]) );
-	printf("first_table data_types: [");
-	for( int i = 0; i<logs->all_tables[0].attribute_count; i++){
-		printf("%d, ", tmp[i]);
-	}
-	printf("]\n");
-	free( tmp );
-
-	char** temp = (char **)malloc(26*sizeof(char));
-	temp[0] = "create\0";
-	temp[1] = "table\0";
-	temp[2] = "Third\0";
-	temp[3] = "\0";
-	temp[4] = "ID\0";
-	temp[5] = "integer\0";
-	temp[6] = "notnull\0";
-	temp[7] = "primarykey\0";
-	temp[8] = "\0";
-	temp[9] = "NAME\0";
-	temp[10] = "varchar\0";
-	temp[11] = "\0";
-	temp[12] = "AGE\0";
-	temp[13] = "integer\0";
-	temp[14] = "notnull\0";
-	temp[15] = "\0";
-	temp[16] = "FUN\0";
-	temp[17] = "boolean\0";
-	temp[18] = "\0";
-	temp[19] = "primarykey\0";
-	temp[20] = "ID\0";
-	temp[21] = "\0";
-	temp[22] = "unique\0";
-	temp[23] = "NAME\0";
-	temp[24] = "AGE\0";
-	temp[25] = "\0";
-
-	create_table( logs, 26, temp );
-	drop_table_ddl( logs, "Third" );
-	pretty_print_catalogs( logs );
-
-	free( temp );
-
-	char* statement = "create table fourth( \n ID integer notnull, \n primarykey (ID) \n);";
-
-	parse_ddl_statement( statement );
+	int run_result = run( argc,argv );
 
 	return 0;
 }
@@ -230,10 +293,10 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     }
     int table_index = cat->table_count;
     manage_catalogs(cat, cat->table_count+1, true);
-    init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
+    init_catalog(&(cat->all_tables[table_index]), table_index, 0, 0, 0, 0, 0, tokens[current]);
     current = 4; // skip over empty string
     while(current < token_count && valid ){
-        if(strcmp(tokens[current], "primarykey") == 0){
+        if(strcasecmp(tokens[current], "primarykey") == 0){
             current++;
             char ** prims = (char **)malloc(sizeof(char *));
             int prim_count = 0;
@@ -254,7 +317,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( prims[i] );
             }
             free( prims );
-        } else if(strcmp(tokens[current], "unique") == 0){
+        } else if(strcasecmp(tokens[current], "unique") == 0){
             current++;
             char ** uniques = (char **)malloc(sizeof(char *));
             int uniq_count = 0;
@@ -275,31 +338,35 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( uniques[i] );
             }
             free( uniques );
-        } else if(strcmp(tokens[current], "foreignkey") == 0){
+        } else if(strcasecmp(tokens[current], "foreignkey") == 0){
             current++;
             int foreign_count = 1;
+            char *f_name;
             char **foreigns = (char **)malloc(sizeof(char *));
-            int key_count = 0;
-            while(strcmp(tokens[current], "references") != 0){
-                foreign_count++;
-                key_count++;
+            int indx = 0;
+            while(strcasecmp(tokens[current], "references") != 0){
                 foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[foreign_count-1], tokens[current]);
+                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[indx], tokens[current]);
+                indx++;
+                foreign_count++;
                 current++;
             }
             current++;
-            strcpy(foreigns[0], tokens[current]);
+            f_name = (char*)malloc(strlen(tokens[current]+1)*sizeof(char));
+            memset( f_name, '\0', (strlen(tokens[current])+1)*sizeof(char));
+            strcpy( f_name, tokens[current] );
+            current++;
             while(strcmp(tokens[current], "") != 0){
-                foreign_count++;
                 foreigns = (char **)realloc(foreigns, foreign_count * sizeof(char *));
-                foreigns[foreign_count-1] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
-                memset( foreigns[foreign_count-1], '\0', (strlen(tokens[current])+1)*sizeof(char));
-                strcpy(foreigns[foreign_count-1], tokens[current]);
+                foreigns[indx] = (char *)malloc( (strlen(tokens[current])+1) * sizeof( char ));
+                memset( foreigns[indx], '\0', (strlen(tokens[current])+1)*sizeof(char));
+                strcpy(foreigns[indx], tokens[current]);
+                foreign_count++;
                 current++;
             }
-            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, key_count);
+            int added = add_foreign_data(cat, &(cat->all_tables[table_index]), foreigns, indx, f_name);
             if(added == -1){
                 valid = false;
             }
@@ -308,20 +375,23 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
             	free( foreigns[i] );
             }
             free( foreigns );
+            free( f_name );
         } else {
             int name_idx = current++;
             int type_idx = current++;
             int constraints[3] = { 0 };
             while(strcmp(tokens[current], "") != 0 && valid != false){
-                if(strcmp(tokens[current], "notnull") == 0){
+                if(strcasecmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
                     current++;
-                } else if(strcmp(tokens[current], "primarykey") == 0){
+                } else if(strcasecmp(tokens[current], "primarykey") == 0){
                     constraints[1] = 1;
                     current++;
-                } else if(strcmp(tokens[current], "unique") == 0){
+                } else if(strcasecmp(tokens[current], "unique") == 0){
                     constraints[2] = 1;
                     current++;
+                } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
+                	current++;
                 } else {
                     valid = false;
                 }
@@ -349,6 +419,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     		delete_table( &(cat->all_tables[table_index]) );
     		return -1;
     	}
+    	cat->all_tables[table_index].storage_manager_loc = meta_id;
     	free( data_types );
         return meta_id;
     }
@@ -360,34 +431,48 @@ int drop_table_ddl( catalogs *cat, char *name ){
     	fprintf(stderr, "ERROR: attempted to drop an unknown table %s\n", name);
     	return idx;
     }
-    int success = drop_table( cat->all_tables[idx].id );
+    int success = drop_table( cat->all_tables[idx].storage_manager_loc );
     if( success == -1 ){ return success; }
     delete_table( &(cat->all_tables[idx]) );
     return 1;
 }
 
 int alter_table(catalogs *cat, int token_count, char **tokens){
-    if(token_count != 5 && token_count != 6 && token_count != 8) {
+    if(token_count != 6 && token_count != 7 && token_count != 9 && token_count != 10) {
         fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
         return -1;
     }
-    if(strcmp(tokens[2], "add"){
-        if(token_count == 8){
+    if( strcasecmp(tokens[3], "add") == 0 ){
+        if(token_count == 9){ // add attribute with default value
+        	if( strcasecmp(tokens[7],"null") == 0 ){
+        		tokens[7] = NULL;
+        	}
             return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[7]);
-        } else {
-            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], null);
+        } else if(token_count == 10){
+        	if( strcasecmp(tokens[8],"null") == 0 ){
+        		tokens[8] = NULL;
+        	}
+            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[8]);
+        }else { // add
+            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], NULL);
         }
+    }else if( strcasecmp(tokens[3], "drop") == 0 ){
+    	return drop_attribute( cat, tokens[2], tokens[4] );
+    }else{
+    	fprintf(stderr, "ERROR: '%s' is not a known command.\n", tokens[2]);
+    	return -1;
     }
-
 }
 
 int drop_attribute(catalogs *cat, char *table, char *attribute){
     int table_loc = get_catalog(cat, table);
     if( table_loc == -1 ){
+    	fprintf(stderr, "ERROR: '%s' table doesn't exist.\n", table);
         return -1;
     }
     int attribute_loc = get_attr_loc(&(cat->all_tables[table_loc]), attribute);
     if( attribute_loc == -1 ){
+    	fprintf(stderr, "ERROR: '%s' attribute doesn't exist.\n", attribute);
         return -1;
     }
     int attribute_position = get_attr_idx(&(cat->all_tables[table_loc]), attribute_loc);
@@ -399,35 +484,28 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         return -1;
     }
     union record_item **records;
-    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    int rec_count = get_records(cat->all_tables[table_loc].storage_manager_loc, &records);
     if( rec_count == -1 ){
         return -1;
     }
-    success = drop_table(cat->all_tables[table_loc].id);
+    success = drop_table(cat->all_tables[table_loc].storage_manager_loc);
     if( success == -1 ){
         return -1;
     }
     int new_attr_count = get_attribute_count_no_deletes(&(cat->all_tables[table_loc]));
-    int *data_types = malloc(sizeof(int) * new_attr_count);
-    int position = 0;
-    for(int i = 0; i < new_attr_count;;){
-        if(cat->all_tables[table_loc].attributes[position].deleted == false){
-            data_types[i] = cat->all_tables[table_loc].attributes[position].type;
-            i++;
-        }
-        position++;
-    }
+    int *data_types = get_table_data_types( &(cat->all_tables[table_loc]) );
+
     int prim_count = cat->all_tables[table_loc].primary_size;
     int *prim_indices = malloc(sizeof(int) * prim_count);
     for(int i = 0; i < prim_count; i++){
-        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i])
+        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i]);
     }
     int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
     if( new_id == -1 ){
         return -1;
     }
-    cat->all_tables[table_loc].id = new_id;
-    union record_item **record = malloc(sizeof(union record_item *) * rec_count);
+    cat->all_tables[table_loc].storage_manager_loc = new_id;
+    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
     for(int i = 0; i < rec_count; i++){
         record[i] = malloc(sizeof(union record_item) * new_attr_count);
         int offset = 0;
@@ -452,15 +530,14 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
 }
 
 int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char *value){
-    if(get_attr_loc(cat, name) != -1){
-        return -1;
-    }
     int table_loc = get_catalog(cat, table);
     if( table_loc == -1 ){
+    	fprintf(stderr, "ERROR: '%s' table doesn't exist.\n", table);
         return -1;
     }
+
     union record_item **records;
-    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    int rec_count = get_records(cat->all_tables[table_loc].storage_manager_loc, &records);
     if( rec_count == -1 ){
         return -1;
     }
@@ -469,48 +546,43 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     if( success == -1 ){
         return -1;
     }
-    success = drop_table(cat->all_tables[table_loc].id);
+
+    success = drop_table(cat->all_tables[table_loc].storage_manager_loc);
     if( success == -1 ){
         return -1;
     }
     int new_attr_count = get_attribute_count_no_deletes(&(cat->all_tables[table_loc]));
-    int *data_types = malloc(sizeof(int) * new_attr_count);
-    int position = 0;
-    for(int i = 0; i < new_attr_count;;){
-        if(cat->all_tables[table_loc].attributes[position].deleted == false){
-            data_types[i] = cat->all_tables[table_loc].attributes[position].type;
-            i++;
-        }
-        position++;
-    }
+    int *data_types = get_table_data_types( &(cat->all_tables[table_loc]) );
+
     int prim_count = cat->all_tables[table_loc].primary_size;
     int *prim_indices = malloc(sizeof(int) * prim_count);
     for(int i = 0; i < prim_count; i++){
-        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i])
+        prim_indices[i] = get_attr_idx(&(cat->all_tables[table_loc]), cat->all_tables[table_loc].primary_tuple[i]);
     }
     int new_id = add_table(data_types, prim_indices, new_attr_count, prim_count);
     if( new_id == -1 ){
         return -1;
     }
-    cat->all_tables[table_loc].id = new_id;
+    cat->all_tables[table_loc].storage_manager_loc = new_id;
     int type_int = type_conversion(type);
     union record_item new_record;
-    if(value == null){
-        new_record.d = DOUBLE_MIN;
+    if(value == NULL){
+        new_record.d = LONG_MAX;
     } else if(type_int == 0){
         new_record.i = atoi(value);
     } else if(type_int == 1){
-        new_record.d = atod(value);
+    	char *eptr;
+        new_record.d = strtod( value,&eptr );
     } else if(type_int == 2){
-        if(strcmp(value, "true") == 0){
+        if(strcasecmp(value, "true") == 0){
             new_record.b = true;
         } else {
             new_record.b = false;
         }
     } else if(type_int == 3){
-        memcpy(new_record, value, strlen(value));
+        memcpy(new_record.c, value, strlen(value));
     } else if(type_int == 4){
-        memcpy(new_record, value, strlen(value));
+        memcpy(new_record.v, value, strlen(value));
     }
     union record_item **record = malloc(sizeof(union record_item *) * rec_count);
     for(int i = 0; i < rec_count; i++){
