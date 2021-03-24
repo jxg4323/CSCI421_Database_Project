@@ -427,24 +427,26 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         return -1;
     }
     cat->all_tables[table_loc].id = new_id;
-    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    union record_item **record = malloc(sizeof(union record_item *) * rec_count);
     for(int i = 0; i < rec_count; i++){
+        record[i] = malloc(sizeof(union record_item) * new_attr_count);
         int offset = 0;
         for(int j = 0; j < new_attr_count + 1; j++){
             if(j == attribute_position){
                 offset = 1;
             } else {
-                record[j - offset] = records[i][j];
+                record[i][j - offset] = records[i][j];
             }
         }
-        insert_record(new_id, record);
+        insert_record(new_id, record[i]);
+    }
+    for(int i = 0; i < rec_count; i++){
+        free(records[i]);
+        free(record[i]);
     }
     free(record);
     free(data_types);
     free(prim_indices);
-    for(int i = 0; i < rec_count; i++){
-        free(&(records[i]));
-    }
     free(records);
     return 1;
 }
@@ -510,23 +512,25 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     } else if(type_int == 4){
         memcpy(new_record, value, strlen(value));
     }
-    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    union record_item **record = malloc(sizeof(union record_item *) * rec_count);
     for(int i = 0; i < rec_count; i++){
+        record[i] = malloc(sizeof(union record_item) * new_attr_count);
         for(int j = 0; j < new_attr_count; j++){
             if(j == new_attr_count - 1;){
-                record[j] = new_record;
+                record[i][j] = new_record;
             } else {
-                record[j] = records[i][j];
+                record[i][j] = records[i][j];
             }
         }
-        insert_record(new_id, record);
+        insert_record(new_id, record[i]);
+    }
+    for(int i = 0; i < rec_count; i++){
+        free(records[i]);
+        free(record[i]);
     }
     free(record);
     free(data_types);
     free(prim_indices);
-    for(int i = 0; i < rec_count; i++){
-        free(&(records[i]));
-    }
     free(records);
     return 1;
 }
