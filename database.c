@@ -505,7 +505,7 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         return -1;
     }
     cat->all_tables[table_loc].storage_manager_loc = new_id;
-    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    union record_item **record = malloc(sizeof(union record_item *) * rec_count);
     for(int i = 0; i < rec_count; i++){
         record[i] = malloc(sizeof(union record_item) * new_attr_count);
         int offset = 0;
@@ -588,7 +588,7 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     for(int i = 0; i < rec_count; i++){
         record[i] = malloc(sizeof(union record_item) * new_attr_count);
         for(int j = 0; j < new_attr_count; j++){
-            if(j == new_attr_count - 1;){
+            if(j == new_attr_count - 1){
                 record[i][j] = new_record;
             } else {
                 record[i][j] = records[i][j];
