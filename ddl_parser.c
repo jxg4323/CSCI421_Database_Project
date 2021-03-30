@@ -154,7 +154,7 @@ int parse_drop_statement( char * statement ){
 
     free( name );
     free( temp );
-    return drop_result; 
+    return (drop_result == 1) ? 0 : -1; 
 }
 
 /*
@@ -213,7 +213,7 @@ int parse_alter_statement( char * statement ){
     free( data );
     free( temp );
 
-    return alt_res;
+    return (alt_res == 1) ? 0 : -1;
 }
 
 /*

@@ -105,7 +105,7 @@ void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int 
  * Initialize the attribute with the constraints and name provided and 
  * mark the attribute as NOT deleted. 
  */
-void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name){
+void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int char_len, int store_default, union record_item def_val, char *name){
 	attr->deleted = false;
 	attr->type = type;
 	attr->name =(char *)malloc((strlen(name)+1)*sizeof(char));
@@ -113,6 +113,13 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
 	attr->notnull = notnull;
 	attr->primarykey = primkey;
 	attr->unique = unique;
+	if( type == 3 ){ // If the type is a "char" then the length needs to be stored
+		attr->char_len = char_len;
+	}else
+		attr->char_len = -1; // char length disregarded for all other types
+	if( store_default == 1 ){
+		attr->default_val = def_val;
+	}
 }
 
 /*
@@ -192,17 +199,23 @@ int read_catalogs(char *db_loc, catalogs* logs){
 		// read attribute info 
 		char *a_name;
 		for(int i = 0; i < a_count; i++){
-			int type, notnull, primkey, unique, rel_count;
+			int type, notnull, primkey, unique, rel_count, default_there, char_len;
+			union record_item default_val;
 			name_size = 0;
 			fread(&type, sizeof(int), 1, fp);
 			fread(&notnull, sizeof(int), 1, fp);
 			fread(&primkey, sizeof(int), 1, fp);
 			fread(&unique, sizeof(int), 1, fp);
+			fread(&char_len, sizeof(int), 1, fp);
+			fread(&default_there, sizeof(int), 1, fp);
+			if( default_there == 1 ){
+				fread(&default_val, sizeof(union record_item), 1, fp);
+			}
 			fread(&name_size, sizeof(int), 1, fp);
-			a_name = (char *)malloc((name_size+1)*sizeof(char)); // TODO: add null character at end
+			a_name = (char *)malloc((name_size+1)*sizeof(char)); // add null character at end
 			memset(a_name, '\0', (name_size+1)*sizeof(char));
 			fread(a_name, sizeof(char), name_size, fp);
-			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, a_name);
+			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, char_len, default_there, default_val, a_name);
 			free(a_name);
 		}
 		// read foreign relation information
@@ -303,6 +316,11 @@ int write_catalogs(char *db_loc, catalogs* logs){
 			fwrite(&(logs->all_tables[indx].attributes[i].notnull), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].primarykey), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].unique), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].char_len), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].default_there), sizeof(int), 1, fp);
+			if( logs->all_tables[indx].attributes[i].default_there == 1 ){
+				fwrite(&(logs->all_tables[indx].attributes[i].default_val), sizeof(union record_item), 1, fp);
+			}
 			fwrite(&name_size, sizeof(int), 1, fp);
 			fwrite(logs->all_tables[indx].attributes[i].name, sizeof(char), name_size, fp);
 		}
@@ -357,15 +375,15 @@ int new_catalog(catalogs *logs, char *table_name){
  * @param @constraints: layout of array [<notnull>, <primarykey>, <unique>]
  * Return 1 for success and -1 for failure.
  */
-int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]){
+int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3], int char_len, int default_there, union record_item default_val){
 	int last = t_cat->attribute_count;
 	int type_con = type_conversion(type);
 	if ( type_con == -1 ){
-		fprintf( stderr, "ERROR: add_attribute, Type not knonw\n" );
+		fprintf( stderr, "ERROR: add_attribute, Type not known\n" );
 		return -1;
 	}
 	manage_attributes( t_cat, t_cat->attribute_count+1, true );
-	init_attribute( &(t_cat->attributes[last]), type_con, constraints[0], constraints[1], constraints[2], attr_name );
+	init_attribute( &(t_cat->attributes[last]), type_con, constraints[0], constraints[1], constraints[2], char_len, default_there, default_val,attr_name );
 	return 1;
 }
 
@@ -516,6 +534,10 @@ int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){
 		fprintf( stderr, "ERROR: there already exists a primary key.\n" );
 		return -1;
 	}
+	// Remove primarykey constraint from attributes on create
+	for( int i = 0; i<t_cat->attribute_count; i++ ){
+		t_cat->attributes[i].primarykey = 0;
+	}
 	int *tmp = (int *)malloc(num_keys*sizeof(int));
 	// Find attribute locations of each of provided attributes
 	for( int i = 0; i<num_keys; i++ ){
@@ -536,6 +558,11 @@ int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){
  * Return 1 with success and -1 otherwise.
  */
 int remove_primary_key(table_catalog* t_cat){
+	// Remove primarykey constraints from attributes
+	for( int i = 0; i<t_cat->primary_size; i++ ){
+		int attr_id = t_cat->primary_tuple[i];
+		t_cat->attributes[attr_id].primarykey = 0;
+	}
 	// memset the primary key to 0's
 	memset( t_cat->primary_tuple, 0, t_cat->primary_size*sizeof(int) );
 	// set primary key size ot 0

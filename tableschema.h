@@ -41,8 +41,11 @@ typedef struct attribute_info{
     char *name;
     int type;
     bool deleted; // DON'T STORE --> if True then don't write
+    int store_default;
     // TODO: add default value --> Maybe??
+    union record_item default_value;
     // TODO: maybe add char & varch len
+    int char_length;
     // Constraints stored as 0 or 1  --> if 1 then constrain is in use
     int notnull; 
     int primarykey;
@@ -91,7 +94,7 @@ void delete_table( table_catalog* tcat );    //   --> GOOD
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD
 void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
-void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);  //   --> GOOD
+void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int char_len, int store_default, union record_item def_val, char *name);  //   --> GOOD
 void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs);   //   --> GOOD
 void init_unique_tuple(unique* udata, int tup_size, int *tuple);   //   --> GOOD
 void init_primary_tuple(table_catalog *t_cat, int *tuple, int size);  //   --> GOOD
@@ -119,7 +122,8 @@ int new_catalog(catalogs *logs, char *table_name);    //   --> GOOD
  * count for the table. 
  * Return 1 for success and -1 for failure.
  */
-int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]);   //   --> GOOD
+int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3], int char_len, int default_there, union record_item default_val);
+//int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]);   //   --> GOOD
 
 /*
  * Mark an attribute as deleted in the attribute information matrix. If an 
