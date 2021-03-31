@@ -421,7 +421,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                     constraints[2] = 1;
                     current++;
                 } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
-                	str_len = atoi(tokens[current]); //ERROR: size isn't being set --> being ignored by create parse statement
+                	str_len = atoi(tokens[current]); 
                 	current++;
                 } else {
                     valid = false;
@@ -508,6 +508,10 @@ int confirm_name(char* attr_name){
 }
 
 /*
+ * Retrieve the default value for the provided attribute, if null
+ * is the default then assign provided default for record otherwise
+ * set the default value in the record param.
+ *
  * Based on the type of attribute set the appropriate default value.
  * @parm: value - default value
  * @parm: type - type of the attribute
@@ -556,12 +560,23 @@ int get_default_value(char* value, char *attr_name, int type, int str_len, union
 	return result;
 }
 
+/*
+ * Loop through the provided tokens parsing for command authenticity
+ * and if command is genuine then execute add/drop command.
+ * 
+ * @parm: cat - Catalog of table schemas
+ * @parm: token_count - Number of tokens in the alter statement
+ * @parm: tokens - command statement tokens formatted as follows:
+ 				   ["alter", "table", "<table_name>", "add", "<attr_name>", 
+ 				   "<type>", "<size>", "default", "<default_value>"]
+ * @return: 0 with success and -1 otherwise.
+ */
 int alter_table(catalogs *cat, int token_count, char **tokens){
     if(token_count != 6 && token_count != 7 && token_count != 9 && token_count != 10) {
         fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
         return -1;
     } 
-    // TODO: add information for default values!!!!!
+    // Command type catch
     if( strcasecmp(tokens[3], "add") == 0 ){
     	int name_check = confirm_name(tokens[4]);
     	int type = type_conversion(tokens[5]);
@@ -684,7 +699,19 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     free(records);
     return 1;
 }
-/*
+
+/* 
+ * Add an attribute and its information to the designated table.
+ * Return 0 with success and -1 otherwise.
+ *
+ * @parm: cat - Table Schemas information
+ * @parm: table - Name of the Table to add attribute to
+ * @parm: name - Name of the new attribute
+ * @parm: type - type of the attribute
+ * @parm: def_val - holds the default value of the attribute or nothing if there is no default set
+ * @parm: default_there - If 1 then def_val holds the default value for the attribute otherwise if 0
+ 						  the default value is ignored
+ * @parm: char_len - Length the char/varchar string for storage.
  * @parm: value - default value for attribute,
  *			if char or varchar then NULL value is saved as "\0" character for size of record
  *			if int or double with NULL are stored as INTMAX
