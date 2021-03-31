@@ -1,0 +1,45 @@
+create table first( ID integer );
+
+alter table first add FURTHER boolean;
+
+create table Person(
+	ID integer notnull primarykey,
+	NAME varchar(100) notnull,
+	AGE integer,
+	primarykey( ID )
+);
+
+alter table Person add LastName char(25) default "Green";
+
+create table sex(
+	SEXID integer notnull primarykey,
+	FAV_POSITION varchar(255) notnull,
+	PartnerName varchar(50) notnull,
+	primarykey( SEXID ),
+	foreignkey( PartnerName ) references Person( NAME )
+);
+
+alter table sex add ORGASM_COUNT integer default 5;
+
+create table Funny(
+	FID integer notnull,
+	JOKE varchar(244) notnull,
+	LAUGHTER integer notnull,
+	primarykey( FID ),
+	unique( JOKE LAUGHTER )
+);
+
+create table Test(
+	ID integer notnull primarykey,
+	NAME varchar(100) notnull,
+	AGE integer primarykey,
+	primarykey( ID )
+);
+
+
+Table Person:
+	ID	  Name    Age
+	0	  James   23
+	1     Kelsey  22
+	2     Alex    20
+	3     Varnit  20

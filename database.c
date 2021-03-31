@@ -233,6 +233,34 @@ int run(int argc, char *argv[]){
 		char *token = strtok(tokenString, delims);
 
 		// TODO: FOR PHASE 2, test with new records
+		if( strcasecmp(token, "test") == 0 ){
+			union record_item people[4][3];
+			people[0][0].i = 0;
+			memcpy( people[0][1].v, "James\0", 6*sizeof(char));
+			people[0][2].i = 23;
+
+			people[1][0].i = 1;
+			memcpy( people[1][1].v, "Kelsey\0", 7*sizeof(char));
+			people[1][2].i = 22;
+
+			people[2][0].i = 2;
+			memcpy( people[2][1].v, "Alex\0", 5*sizeof(char));
+			people[2][2].i = 20;
+
+			people[3][0].i = 3;
+			memcpy( people[3][1].v, "Varnit\0", 7*sizeof(char));
+			people[3][2].i = 20;
+			insert_record( 0, people[0] );
+			insert_record( 0, people[1] );
+			insert_record( 0, people[2] );
+			insert_record( 0, people[3] );
+			printf("INSERT!!\n");
+			union record_item *record;
+			union record_item key;
+			key.i = 0;
+			get_record( 0, &key, &record );
+			printf("HERE!\n");
+		}
 
 		// View All Current Table Schemas in Volatile Memory
 		if( strcasecmp(token, "print") == 0){
@@ -293,7 +321,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     }
     int table_index = cat->table_count;
     manage_catalogs(cat, cat->table_count+1, true);
-    init_catalog(&(cat->all_tables[table_index]), 0, 0, 0, 0, 0, tokens[current]);
+    init_catalog(&(cat->all_tables[table_index]), table_index, 0, 0, 0, 0, 0, tokens[current]);
     current = 4; // skip over empty string
     while(current < token_count && valid ){
         if(strcasecmp(tokens[current], "primarykey") == 0){
@@ -379,7 +407,9 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
         } else {
             int name_idx = current++;
             int type_idx = current++;
+            int str_len = -1;
             int constraints[3] = { 0 };
+            union record_item ignored_value;
             while(strcmp(tokens[current], "") != 0 && valid != false){
                 if(strcasecmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
@@ -391,14 +421,15 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                     constraints[2] = 1;
                     current++;
                 } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
+                	str_len = atoi(tokens[current]); 
                 	current++;
                 } else {
                     valid = false;
-                }
+                }// TODO: add token catch for default value NO!
             }
             int added = -1;
             if(valid != false) {
-                added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints);
+                added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints, str_len, 0, ignored_value);
             }
             if(added == -1){
                 valid = false;
@@ -419,6 +450,7 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
     		delete_table( &(cat->all_tables[table_index]) );
     		return -1;
     	}
+    	cat->all_tables[table_index].storage_manager_loc = meta_id;
     	free( data_types );
         return meta_id;
     }
@@ -430,33 +462,177 @@ int drop_table_ddl( catalogs *cat, char *name ){
     	fprintf(stderr, "ERROR: attempted to drop an unknown table %s\n", name);
     	return idx;
     }
-    int success = drop_table( cat->all_tables[idx].id );
+    int success = drop_table( cat->all_tables[idx].storage_manager_loc );
     if( success == -1 ){ return success; }
     delete_table( &(cat->all_tables[idx]) );
     return 1;
 }
 
+/*
+ * Check to make sure the name of the attribute isn't a reserved
+ * word such as the constraionts or types.
+ * @return 0 if the name isn't a reserved work 
+ * 		  -1 otherwise
+ */
+int confirm_name(char* attr_name){
+	int result = 0;
+	if( strcasecmp(attr_name, "primarykey") == 0 ){ 
+		fprintf(stderr, "ERROR: attribute name can't be key word primarykey\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "unique") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word unique\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "notnull") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word notnull\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "char") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word char\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "varchar") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word varchar\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "integer") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word integer\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "boolean") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word boolean\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "double") == 0 ){
+		fprintf(stderr, "ERROR: attribute name can't be key word double\n" );
+		result = -1;
+	}else if( strcasecmp(attr_name, "default") == 0){
+		fprintf(stderr, "ERROR: attribute name can't be key word default\n" );
+		result = -1;
+	}
+	return result;
+}
+
+/*
+ * Retrieve the default value for the provided attribute, if null
+ * is the default then assign provided default for record otherwise
+ * set the default value in the record param.
+ *
+ * Based on the type of attribute set the appropriate default value.
+ * @parm: value - default value
+ * @parm: type - type of the attribute
+ * @parm: record - return paramter which will contain the default value
+ * @return 0 if successfully able to set the record value
+ *		  -1 otherwise.
+ */
+int get_default_value(char* value, char *attr_name, int type, int str_len, union record_item *record){
+	bool null = (strcasecmp(value,"null") == 0);
+	int result = 0;
+	char *eptr;
+	switch( type ){
+		case 0: //int
+			if( null ){ record->i = INT_MAX; }
+			else{ record->i = atoi(value); }
+			break;
+		case 1: // double
+			if( null ){ record->d = INT_MAX; }
+			else{ record->d = strtod( value,&eptr ); }
+			break;
+		case 2: // boolean
+			if( null ){ record->b = INT_MAX; }
+			if(strcasecmp(value, "true") == 0){
+	            record->b = true;
+	        } else {
+	            record->b = false;
+	        }
+			break;
+		case 3: // char
+			if( null ){ memset(record->c, '\0', (str_len)*sizeof(char)); }
+			else if( str_len <= strlen(value) ){ // char default value is beyond size of char attribute
+				fprintf(stderr, "ERROR: '%s' default value is too large for the '%s' attribue.\n", value, attr_name);
+				result = -1;
+			}
+			else{ memcpy(record->c, value, str_len); }
+			break;
+		case 4: // varchar
+			if( null ){ memset(record->v, '\0', (str_len)*sizeof(char)); }
+			else{ memcpy(record->v, value, str_len); }
+			break;
+		default:
+			fprintf(stderr, "ERROR: unknown type for '%s'\n", attr_name);
+			result = -1;
+			break;
+	}
+	return result;
+}
+
+/*
+ * Loop through the provided tokens parsing for command authenticity
+ * and if command is genuine then execute add/drop command.
+ * 
+ * @parm: cat - Catalog of table schemas
+ * @parm: token_count - Number of tokens in the alter statement
+ * @parm: tokens - command statement tokens formatted as follows:
+ 				   ["alter", "table", "<table_name>", "add", "<attr_name>", 
+ 				   "<type>", "<size>", "default", "<default_value>"]
+ * @return: 0 with success and -1 otherwise.
+ */
 int alter_table(catalogs *cat, int token_count, char **tokens){
     if(token_count != 6 && token_count != 7 && token_count != 9 && token_count != 10) {
         fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
         return -1;
-    }
+    } 
+    // Command type catch
     if( strcasecmp(tokens[3], "add") == 0 ){
-        if(token_count == 9){ // add attribute with default value
-        	if( strcasecmp(tokens[7],"null") == 0 ){
-        		tokens[7] = NULL;
-        	}
-            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[7]);
-        } else if(token_count == 10){
-        	if( strcasecmp(tokens[8],"null") == 0 ){
-        		tokens[8] = NULL;
-        	}
-            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[8]);
-        }else { // add
-            return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], NULL);
-        }
+    	int name_check = confirm_name(tokens[4]);
+    	int type = type_conversion(tokens[5]);
+    	union record_item default_val;
+    	int str_len = -1;
+    	if( name_check == -1 ){ return -1; }
+    	char* attr_name = strdup(tokens[4]);
+    	if( type == -1 ){ 
+    		fprintf(stderr, "ERROR: '%s' is not a valid type\n", tokens[5]);
+    		return -1;
+    	}else if( type == 3 || type == 4 ){ // then next token is length of char/varchar
+    		if( is_number(tokens[6]) ){ 
+    			str_len = atoi(tokens[6]); 
+    		}else{
+    			fprintf(stderr, "ERROR: '%s' isn't a valid character length for %s\n", tokens[6], tokens[5]);
+    			return -1;
+    		}
+    		if( token_count == 8 ){
+    			return add_attribute_table( cat, tokens[2], attr_name, tokens[5], default_val, 0, str_len);
+    		}else if( token_count == 10 ){
+    			if( strcasecmp(tokens[7],"default") != 0 ){
+    				fprintf(stderr, "ERROR: '%s' has to be 'default' when setting a default value for '%s'\n", tokens[6], tokens[5]);
+    				fprintf(stderr, "usage: char or varchar statements are layout follows:\nalter table <table_name> add/drop <attr_name> <type> default \"<defaul_value>\"\n");
+    				return -1;
+    			}
+    			// set default value for attribute
+    			if( get_default_value(tokens[8], attr_name, type, str_len, &default_val) == -1 ){ return -1; }
+    			return add_attribute_table( cat, tokens[2], attr_name, tokens[5], default_val, 1, str_len );
+    		}else{ // error
+    			fprintf(stderr, "ERROR: invalid number of tokens for char or varchar attributes.\n");
+    			fprintf(stderr, "usage: char or varchar statements are layout follows:\nalter table <table_name> add/drop <attr_name> <type> default \"<defaul_value>\"\n");
+    			return -1;
+    		}
+    	}else{ // type is int, dobule, or bool
+    		if( token_count == 7 ){ // no default value
+    			return add_attribute_table( cat, tokens[2], attr_name, tokens[5], default_val, 0, -1 );
+    		}else if( token_count == 9 ){ // default value
+    			if( strcasecmp(tokens[6],"default") != 0 ){
+    				fprintf(stderr, "ERROR: '%s' has to be 'default' when setting a default value for '%s'\n", tokens[6], tokens[5]);
+    				fprintf(stderr, "usage: int,double, and boolean statements are layout follows:\nalter table <table_name> add/drop <attr_name> <type> default <defaul_value>\n");
+    				return -1;
+    			}
+    			// set default value for attribute
+    			if( get_default_value(tokens[7], attr_name, type, str_len, &default_val) == -1 ){ return -1; }
+    			return add_attribute_table( cat, tokens[2], attr_name, tokens[5], default_val, 1, -1 );
+    		}else{ // error
+    			fprintf(stderr, "ERROR: invalid number of tokens for int, double, or boolean attributes.\n");
+    			fprintf(stderr, "usage: int,double, and boolean statements are layout follows:\nalter table <table_name> add/drop <attr_name> <type> default <defaul_value>\n");
+    			return -1;
+    		}
+    	}
     }else if( strcasecmp(tokens[3], "drop") == 0 ){
-    	return drop_attribute( cat, tokens[2], tokens[4] );
+    	int name_check = confirm_name(tokens[4]);
+    	if( name_check == -1 ){ return -1; }
+    	char* attr_name = strdup(tokens[4]);
+    	return drop_attribute( cat, tokens[2], attr_name );
     }else{
     	fprintf(stderr, "ERROR: '%s' is not a known command.\n", tokens[2]);
     	return -1;
@@ -483,11 +659,11 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         return -1;
     }
     union record_item **records;
-    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    int rec_count = get_records(cat->all_tables[table_loc].storage_manager_loc, &records);
     if( rec_count == -1 ){
         return -1;
     }
-    success = drop_table(cat->all_tables[table_loc].id);
+    success = drop_table(cat->all_tables[table_loc].storage_manager_loc);
     if( success == -1 ){
         return -1;
     }
@@ -503,9 +679,9 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     if( new_id == -1 ){
         return -1;
     }
-    cat->all_tables[table_loc].id = new_id;
-    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    cat->all_tables[table_loc].storage_manager_loc = new_id;
     for(int i = 0; i < rec_count; i++){
+    	union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
         int offset = 0;
         for(int j = 0; j < new_attr_count + 1; j++){
             if(j == attribute_position){
@@ -515,18 +691,33 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
             }
         }
         insert_record(new_id, record);
+    	free( record );
     }
-    free(record);
+    free( attribute );
     free(data_types);
     free(prim_indices);
-    for(int i = 0; i < rec_count; i++){
-        free(&(records[i]));
-    }
     free(records);
     return 1;
 }
 
-int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char *value){
+/* 
+ * Add an attribute and its information to the designated table.
+ * Return 0 with success and -1 otherwise.
+ *
+ * @parm: cat - Table Schemas information
+ * @parm: table - Name of the Table to add attribute to
+ * @parm: name - Name of the new attribute
+ * @parm: type - type of the attribute
+ * @parm: def_val - holds the default value of the attribute or nothing if there is no default set
+ * @parm: default_there - If 1 then def_val holds the default value for the attribute otherwise if 0
+ 						  the default value is ignored
+ * @parm: char_len - Length the char/varchar string for storage.
+ * @parm: value - default value for attribute,
+ *			if char or varchar then NULL value is saved as "\0" character for size of record
+ *			if int or double with NULL are stored as INTMAX
+ *			if boolean store false
+ */
+int add_attribute_table(catalogs *cat, char *table, char *name, char *type, union record_item def_val, int default_there, int char_len){
     int table_loc = get_catalog(cat, table);
     if( table_loc == -1 ){
     	fprintf(stderr, "ERROR: '%s' table doesn't exist.\n", table);
@@ -534,17 +725,17 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     }
 
     union record_item **records;
-    int rec_count = get_records(cat->all_tables[table_loc].id, &records);
+    int rec_count = get_records(cat->all_tables[table_loc].storage_manager_loc, &records);
     if( rec_count == -1 ){
         return -1;
     }
     int constraints[3] = { 0 };
-    int success = add_attribute(&(cat->all_tables[table_loc]),name,type,constraints);
+    int success = add_attribute(&(cat->all_tables[table_loc]),name,type,constraints, char_len, default_there, def_val);
     if( success == -1 ){
         return -1;
     }
 
-    success = drop_table(cat->all_tables[table_loc].id);
+    success = drop_table(cat->all_tables[table_loc].storage_manager_loc);
     if( success == -1 ){
         return -1;
     }
@@ -560,29 +751,11 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
     if( new_id == -1 ){
         return -1;
     }
-    cat->all_tables[table_loc].id = new_id;
-    int type_int = type_conversion(type);
-    union record_item new_record;
-    if(value == NULL){
-        new_record.d = LONG_MAX;
-    } else if(type_int == 0){
-        new_record.i = atoi(value);
-    } else if(type_int == 1){
-    	char *eptr;
-        new_record.d = strtod( value,&eptr ); 
-    } else if(type_int == 2){
-        if(strcasecmp(value, "true") == 0){
-            new_record.b = true;
-        } else {
-            new_record.b = false;
-        }
-    } else if(type_int == 3){
-        memcpy(new_record.c, value, strlen(value));
-    } else if(type_int == 4){
-        memcpy(new_record.v, value, strlen(value));
-    }
-    union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
+    cat->all_tables[table_loc].storage_manager_loc = new_id;
+    
+    union record_item new_record = def_val;
     for(int i = 0; i < rec_count; i++){
+    	union record_item *record = malloc(sizeof(union record_item) * new_attr_count);
         for(int j = 0; j < new_attr_count; j++){
             if(j == new_attr_count - 1){
                 record[j] = new_record;
@@ -591,13 +764,11 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, char
             }
         }
         insert_record(new_id, record);
+    	free(record);
     }
-    free(record);
+    free( name );
     free(data_types);
     free(prim_indices);
-    for(int i = 0; i < rec_count; i++){
-        free(&(records[i]));
-    }
     free(records);
     return 1;
 }

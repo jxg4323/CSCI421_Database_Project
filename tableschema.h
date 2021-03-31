@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <unistd.h> 
 #include <string.h>
+#include "storagemanager.h"
 #define TABLE_CATALOG_FILE "table_catalog"
 #define TABLE_CATALOG_FILE_LEN 14
 #define NOTNULL 6
@@ -41,8 +42,11 @@ typedef struct attribute_info{
     char *name;
     int type;
     bool deleted; // DON'T STORE --> if True then don't write
-    // TODO: add default value --> Maybe??
-    // TODO: maybe add char & varch len
+    int store_default;
+    // default value
+    union record_item default_value;
+    // char & varch len
+    int char_length;
     // Constraints stored as 0 or 1  --> if 1 then constrain is in use
     int notnull; 
     int primarykey;
@@ -51,6 +55,7 @@ typedef struct attribute_info{
 
 typedef struct table_catalog{
     int id;
+    int storage_manager_loc;
     bool deleted; // DON'T STORE --> if True then don't write
     // Sizes of arrays with deletions
     int attribute_count;
@@ -89,8 +94,8 @@ void delete_table( table_catalog* tcat );    //   --> GOOD
 
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD
-void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
-void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name);  //   --> GOOD
+void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int f_size, int p_size, int u_size, char *table_name);  //   --> GOOD
+void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int char_len, int store_default, union record_item def_val, char *name);  //   --> GOOD
 void init_foreign_relation(foreign_data* fdata, char* name, int fid, int size, int *orig_attrs, int *for_attrs);   //   --> GOOD
 void init_unique_tuple(unique* udata, int tup_size, int *tuple);   //   --> GOOD
 void init_primary_tuple(table_catalog *t_cat, int *tuple, int size);  //   --> GOOD
@@ -118,7 +123,8 @@ int new_catalog(catalogs *logs, char *table_name);    //   --> GOOD
  * count for the table. 
  * Return 1 for success and -1 for failure.
  */
-int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]);   //   --> GOOD
+int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3], int char_len, int default_there, union record_item default_val);
+//int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]);   //   --> GOOD
 
 /*
  * Mark an attribute as deleted in the attribute information matrix. If an 

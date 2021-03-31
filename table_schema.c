@@ -85,8 +85,9 @@ void manage_unique_tuple(table_catalog *t_cat, int size, bool increase){
  * memory for the array of attributes but don't fill. User is responsible
  * for freeing the table_name pointer after call.
  */
-void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p_size, int u_size, char *table_name){
+void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int f_size, int p_size, int u_size, char *table_name){
 	catalog->id = tid;
+	catalog->storage_manager_loc = meta_id;
 	catalog->deleted = false;
 	catalog->attribute_count = a_size;
 	catalog->foreign_size = f_size;
@@ -104,7 +105,7 @@ void init_catalog(table_catalog* catalog, int tid, int a_size, int f_size, int p
  * Initialize the attribute with the constraints and name provided and 
  * mark the attribute as NOT deleted. 
  */
-void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, char *name){
+void init_attribute(attr_info* attr, int type, int notnull, int primkey, int unique, int char_len, int store_default, union record_item def_val, char *name){
 	attr->deleted = false;
 	attr->type = type;
 	attr->name =(char *)malloc((strlen(name)+1)*sizeof(char));
@@ -112,6 +113,14 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
 	attr->notnull = notnull;
 	attr->primarykey = primkey;
 	attr->unique = unique;
+	attr->store_default = store_default;
+	if( type == 3 || type == 4 ){ // If the type is a "char" or "varchar" then the length needs to be stored
+		attr->char_length = char_len;
+	}else
+		attr->char_length = -1; // char length disregarded for all other types
+	if( store_default == 1 ){
+		attr->default_value = def_val;
+	}
 }
 
 /*
@@ -176,8 +185,9 @@ int read_catalogs(char *db_loc, catalogs* logs){
 	fread(&(count), sizeof(int), 1, fp);
 	manage_catalogs( logs, count, false ); // assume the table catalogs array hasn't been allocated
 	while( 1 ){
-		int t_id, a_count, foreign_count, unique_count, prim_count, name_size;
+		int t_id, storage_loc, a_count, foreign_count, unique_count, prim_count, name_size;
 		fread(&t_id, sizeof(int), 1, fp);
+		fread(&storage_loc, sizeof(int), 1, fp);
 		fread(&a_count, sizeof(int), 1, fp);
 		fread(&foreign_count, sizeof(int), 1, fp);
 		fread(&unique_count, sizeof(int), 1, fp);
@@ -186,21 +196,27 @@ int read_catalogs(char *db_loc, catalogs* logs){
 		char *temp = (char *)malloc((name_size+1)*sizeof(char));
 		memset(temp, '\0', (name_size+1)*sizeof(char));
 		fread(temp, sizeof(char), name_size, fp);
-		init_catalog( &(logs->all_tables[indx]), t_id, a_count, foreign_count, prim_count, unique_count, temp );
+		init_catalog( &(logs->all_tables[indx]), t_id, storage_loc, a_count, foreign_count, prim_count, unique_count, temp );
 		// read attribute info 
 		char *a_name;
 		for(int i = 0; i < a_count; i++){
-			int type, notnull, primkey, unique, rel_count;
+			int type, notnull, primkey, unique, rel_count, default_there, char_len;
+			union record_item default_val;
 			name_size = 0;
 			fread(&type, sizeof(int), 1, fp);
 			fread(&notnull, sizeof(int), 1, fp);
 			fread(&primkey, sizeof(int), 1, fp);
 			fread(&unique, sizeof(int), 1, fp);
+			fread(&char_len, sizeof(int), 1, fp);
+			fread(&default_there, sizeof(int), 1, fp);
+			if( default_there == 1 ){
+				fread(&default_val, sizeof(union record_item), 1, fp);
+			}
 			fread(&name_size, sizeof(int), 1, fp);
-			a_name = (char *)malloc((name_size+1)*sizeof(char)); // TODO: add null character at end
+			a_name = (char *)malloc((name_size+1)*sizeof(char)); // add null character at end
 			memset(a_name, '\0', (name_size+1)*sizeof(char));
 			fread(a_name, sizeof(char), name_size, fp);
-			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, a_name);
+			init_attribute(&(logs->all_tables[indx].attributes[i]), type, notnull, primkey, unique, char_len, default_there, default_val, a_name);
 			free(a_name);
 		}
 		// read foreign relation information
@@ -286,6 +302,7 @@ int write_catalogs(char *db_loc, catalogs* logs){
 		tru_unicount = get_unique_count_no_deletes( &(logs->all_tables[indx] ));
 		int name_size = strlen(logs->all_tables[indx].table_name);
 		fwrite(&(logs->all_tables[indx].id), sizeof(int), 1, fp);
+		fwrite(&(logs->all_tables[indx].storage_manager_loc), sizeof(int), 1, fp);
 		fwrite(&tru_acount, sizeof(int), 1, fp);
 		fwrite(&tru_relcount, sizeof(int), 1, fp);
 		fwrite(&tru_unicount, sizeof(int), 1, fp);
@@ -300,6 +317,11 @@ int write_catalogs(char *db_loc, catalogs* logs){
 			fwrite(&(logs->all_tables[indx].attributes[i].notnull), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].primarykey), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].unique), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].char_length), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].store_default), sizeof(int), 1, fp);
+			if( logs->all_tables[indx].attributes[i].store_default == 1 ){
+				fwrite(&(logs->all_tables[indx].attributes[i].default_value), sizeof(union record_item), 1, fp);
+			}
 			fwrite(&name_size, sizeof(int), 1, fp);
 			fwrite(logs->all_tables[indx].attributes[i].name, sizeof(char), name_size, fp);
 		}
@@ -344,7 +366,7 @@ int new_catalog(catalogs *logs, char *table_name){
 	}
 	int last = logs->table_count;
 	manage_catalogs( logs, logs->table_count+1, true );
-	init_catalog( &(logs->all_tables[last]),last,0,0,0,0,table_name );
+	init_catalog( &(logs->all_tables[last]),last,0,0,0,0,0,table_name );
 	return last;
 }
 
@@ -354,15 +376,15 @@ int new_catalog(catalogs *logs, char *table_name){
  * @param @constraints: layout of array [<notnull>, <primarykey>, <unique>]
  * Return 1 for success and -1 for failure.
  */
-int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3]){
+int add_attribute(table_catalog* t_cat, char *attr_name, char *type, int constraints[3], int char_len, int default_there, union record_item default_val){
 	int last = t_cat->attribute_count;
 	int type_con = type_conversion(type);
 	if ( type_con == -1 ){
-		fprintf( stderr, "ERROR: add_attribute, Type not knonw\n" );
+		fprintf( stderr, "ERROR: add_attribute, Type not known\n" );
 		return -1;
 	}
 	manage_attributes( t_cat, t_cat->attribute_count+1, true );
-	init_attribute( &(t_cat->attributes[last]), type_con, constraints[0], constraints[1], constraints[2], attr_name );
+	init_attribute( &(t_cat->attributes[last]), type_con, constraints[0], constraints[1], constraints[2], char_len, default_there, default_val,attr_name );
 	return 1;
 }
 
@@ -513,6 +535,10 @@ int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){
 		fprintf( stderr, "ERROR: there already exists a primary key.\n" );
 		return -1;
 	}
+	// Remove primarykey constraint from attributes on create
+	for( int i = 0; i<t_cat->attribute_count; i++ ){
+		t_cat->attributes[i].primarykey = 0;
+	}
 	int *tmp = (int *)malloc(num_keys*sizeof(int));
 	// Find attribute locations of each of provided attributes
 	for( int i = 0; i<num_keys; i++ ){
@@ -533,6 +559,11 @@ int add_primary_key(table_catalog* t_cat, char **prim_names, int num_keys){
  * Return 1 with success and -1 otherwise.
  */
 int remove_primary_key(table_catalog* t_cat){
+	// Remove primarykey constraints from attributes
+	for( int i = 0; i<t_cat->primary_size; i++ ){
+		int attr_id = t_cat->primary_tuple[i];
+		t_cat->attributes[attr_id].primarykey = 0;
+	}
 	// memset the primary key to 0's
 	memset( t_cat->primary_tuple, 0, t_cat->primary_size*sizeof(int) );
 	// set primary key size ot 0
@@ -938,10 +969,11 @@ void pretty_print_catalogs(catalogs* logs){
  * relations, and unique tupes.to stdout.
  */
 void pretty_print_table(catalogs* logs, table_catalog* tcat){
-	printf("Table: \n{name: %s, deleted: %s, attribute_count: %d, "
+	printf("Table: name: %s\n{Catalog Id: %d, storage_loc: %d, deleted: %s, attribute_count: %d, "
 			"foreign_size: %d, primary_size: %d,"" unique_tuples: %d, " 
 			"Attributes: [\n",
-			tcat->table_name, tcat->deleted ? "TRUE" : "FALSE", tcat->attribute_count, 
+			tcat->table_name, tcat->id, tcat->storage_manager_loc,
+			tcat->deleted ? "TRUE" : "FALSE", tcat->attribute_count, 
 			tcat->foreign_size, tcat->primary_size, tcat->unique_size );
 	// print attributes
 	pretty_print_attributes( tcat->attributes, tcat->attribute_count );
@@ -958,9 +990,39 @@ void pretty_print_table(catalogs* logs, table_catalog* tcat){
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
 		char* str_type = type_string( attributes[i].type );
-		printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE",
-			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+		if( attributes[i].type == 3 || attributes[i].type == 4 ){
+			if( attributes[i].store_default == 1 ){ // print default value
+				printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, size: %d, default_value: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+					attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", 
+					attributes[i].char_length, (attributes[i].type == 3) ? attributes[i].default_value.c : attributes[i].default_value.v,
+					attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+			}else{ // no default value to print
+				printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, size: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+					attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", attributes[i].char_length,
+					attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+			}
+		}else{
+			if( attributes[i].store_default == 1 ){
+				if( attributes[i].type == 0 ){ // integer default
+					printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, default_value: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+						attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", attributes[i].default_value.i,
+						attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+				}else if( attributes[i].type == 1 ){ // double default
+					printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, default_value: %f, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+						attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", attributes[i].default_value.d,
+						attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+				}else{
+					printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, default_value: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+						attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", 
+						(attributes[i].default_value.b) ? "TRUE" : "FALSE",
+						attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+				}
+			}else{
+				printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+					attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE",
+					attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+			}
+		}
 	}
 }
 
