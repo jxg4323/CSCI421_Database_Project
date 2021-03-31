@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <unistd.h> 
 #include <string.h>
+#include "storagemanager.h"
 #define TABLE_CATALOG_FILE "table_catalog"
 #define TABLE_CATALOG_FILE_LEN 14
 #define NOTNULL 6
@@ -42,9 +43,9 @@ typedef struct attribute_info{
     int type;
     bool deleted; // DON'T STORE --> if True then don't write
     int store_default;
-    // TODO: add default value --> Maybe??
+    // default value
     union record_item default_value;
-    // TODO: maybe add char & varch len
+    // char & varch len
     int char_length;
     // Constraints stored as 0 or 1  --> if 1 then constrain is in use
     int notnull; 

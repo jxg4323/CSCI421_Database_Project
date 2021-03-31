@@ -407,7 +407,9 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
         } else {
             int name_idx = current++;
             int type_idx = current++;
+            int str_len = -1;
             int constraints[3] = { 0 };
+            union record_item ignored_value;
             while(strcmp(tokens[current], "") != 0 && valid != false){
                 if(strcasecmp(tokens[current], "notnull") == 0){
                     constraints[0] = 1;
@@ -419,14 +421,15 @@ int create_table( catalogs *cat, int token_count, char** tokens ){
                     constraints[2] = 1;
                     current++;
                 } else if( is_number( tokens[current] ) ){ // attribute is a char/varchar & size is irrelevant b/c of fixed record size
+                	str_len = atoi(tokens[current]); //ERROR: size isn't being set --> being ignored by create parse statement
                 	current++;
                 } else {
                     valid = false;
-                }// TODO: add token catch for default value
+                }// TODO: add token catch for default value NO!
             }
             int added = -1;
             if(valid != false) {
-                added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints);
+                added = add_attribute(&(cat->all_tables[table_index]), tokens[name_idx], tokens[type_idx], constraints, str_len, 0, ignored_value);
             }
             if(added == -1){
                 valid = false;
@@ -504,6 +507,55 @@ int confirm_name(char* attr_name){
 	return result;
 }
 
+/*
+ * Based on the type of attribute set the appropriate default value.
+ * @parm: value - default value
+ * @parm: type - type of the attribute
+ * @parm: record - return paramter which will contain the default value
+ * @return 0 if successfully able to set the record value
+ *		  -1 otherwise.
+ */
+int get_default_value(char* value, char *attr_name, int type, int str_len, union record_item *record){
+	bool null = (strcasecmp(value,"null") == 0);
+	int result = 0;
+	char *eptr;
+	switch( type ){
+		case 0: //int
+			if( null ){ record->i = INT_MAX; }
+			else{ record->i = atoi(value); }
+			break;
+		case 1: // double
+			if( null ){ record->d = INT_MAX; }
+			else{ record->d = strtod( value,&eptr ); }
+			break;
+		case 2: // boolean
+			if( null ){ record->b = INT_MAX; }
+			if(strcasecmp(value, "true") == 0){
+	            record->b = true;
+	        } else {
+	            record->b = false;
+	        }
+			break;
+		case 3: // char
+			if( null ){ memset(record->c, '\0', (str_len)*sizeof(char)); }
+			else if( str_len <= strlen(value) ){ // char default value is beyond size of char attribute
+				fprintf(stderr, "ERROR: '%s' default value is too large for the '%s' attribue.\n", value, attr_name);
+				result = -1;
+			}
+			else{ memcpy(record->c, value, str_len); }
+			break;
+		case 4: // varchar
+			if( null ){ memset(record->v, '\0', (str_len)*sizeof(char)); }
+			else{ memcpy(record->v, value, str_len); }
+			break;
+		default:
+			fprintf(stderr, "ERROR: unknown type for '%s'\n", attr_name);
+			result = -1;
+			break;
+	}
+	return result;
+}
+
 int alter_table(catalogs *cat, int token_count, char **tokens){
     if(token_count != 6 && token_count != 7 && token_count != 9 && token_count != 10) {
         fprintf( stderr, "ERROR: wrong amount of tokens for alter table.\n" );
@@ -535,17 +587,8 @@ int alter_table(catalogs *cat, int token_count, char **tokens){
     				fprintf(stderr, "usage: char or varchar statements are layout follows:\nalter table <table_name> add/drop <attr_name> <type> default \"<defaul_value>\"\n");
     				return -1;
     			}
-    			if( strcasecmp(tokens[8],"null") == 0 ){
-    				if( type == 3 ){ memset(default_val.c, '\0', (str_len)*sizeof(char)); }
-    				else if( type == 4 ){ memset(default_val.v, '\0', (str_len)*sizeof(char)); }
-    			}else{
-    				if( str_len <= strlen(tokens[8]) && type == 3 ){ // char default value is beyond size of char attribute
-    					fprintf(stderr, "ERROR: '%s' default value is too large for the '%s' attribue.\n", tokens[8], attr_name);
-    					return -1;
-    				}
-    				if( type == 3 ){ memcpy(default_val.c, tokens[8], str_len); }
-    				else if( type == 4 ){ memcpy(default_val.v, tokens[8], strlen(tokens[8])); }
-    			}
+    			// set default value for attribute
+    			if( get_default_value(tokens[8], attr_name, type, str_len, &default_val) == -1 ){ return -1; }
     			return add_attribute_table( cat, tokens[2], attr_name, tokens[5], default_val, 1, str_len );
     		}else{ // error
     			fprintf(stderr, "ERROR: invalid number of tokens for char or varchar attributes.\n");
@@ -561,22 +604,8 @@ int alter_table(catalogs *cat, int token_count, char **tokens){
     				fprintf(stderr, "usage: int,double, and boolean statements are layout follows:\nalter table <table_name> add/drop <attr_name> <type> default <defaul_value>\n");
     				return -1;
     			}
-    			if( strcasecmp(tokens[7],"null") == 0 ){
-	        		default_val.i = INT_MAX; // INT MAX
-	        	}else{
-	        		if( type == 0 ){
-				        new_record.i = atoi(tokens[7]);
-				    } else if( type == 1 ){
-				    	char *eptr;
-				        new_record.d = strtod( tokens[7],&eptr ); 
-				    } else if( type == 2 ){
-				        if(strcasecmp(tokens[7], "true") == 0){
-				            new_record.b = true;
-				        } else {
-				            new_record.b = false;
-				        }
-				    }
-	        	}
+    			// set default value for attribute
+    			if( get_default_value(tokens[7], attr_name, type, str_len, &default_val) == -1 ){ return -1; }
     			return add_attribute_table( cat, tokens[2], attr_name, tokens[5], default_val, 1, -1 );
     		}else{ // error
     			fprintf(stderr, "ERROR: invalid number of tokens for int, double, or boolean attributes.\n");
@@ -584,26 +613,11 @@ int alter_table(catalogs *cat, int token_count, char **tokens){
     			return -1;
     		}
     	}
-
-        // if(token_count == 9){ // add attribute with default value
-        // 	//TODO: THROW error here if type is char or varchar b/c lenght isn't there
-        // 	if( strcasecmp(tokens[7],"null") == 0 ){
-        // 		tokens[7] = NULL; // INT MAX
-        // 	}
-        //     return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[7], 1, -1);
-        // } else if(token_count == 10){ // add default value for chars and varchars
-        // 	if( strcasecmp(tokens[8],"null") == 0 ){
-        // 		tokens[8] = NULL; // "\0"
-        // 	}
-        //     return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], tokens[8], 1, );
-        // }else { // add without default
-        //     return add_attribute_table(cat, tokens[2], tokens[4], tokens[5], NULL);
-        // }
     }else if( strcasecmp(tokens[3], "drop") == 0 ){
     	int name_check = confirm_name(tokens[4]);
     	if( name_check == -1 ){ return -1; }
     	char* attr_name = strdup(tokens[4]);
-    	return drop_attribute( cat, tokens[2], name );
+    	return drop_attribute( cat, tokens[2], attr_name );
     }else{
     	fprintf(stderr, "ERROR: '%s' is not a known command.\n", tokens[2]);
     	return -1;
@@ -664,7 +678,7 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
         insert_record(new_id, record);
     	free( record );
     }
-    free( name );
+    free( attribute );
     free(data_types);
     free(prim_indices);
     free(records);

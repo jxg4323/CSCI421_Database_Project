@@ -113,12 +113,13 @@ void init_attribute(attr_info* attr, int type, int notnull, int primkey, int uni
 	attr->notnull = notnull;
 	attr->primarykey = primkey;
 	attr->unique = unique;
-	if( type == 3 ){ // If the type is a "char" then the length needs to be stored
-		attr->char_len = char_len;
+	attr->store_default = store_default;
+	if( type == 3 || type == 4 ){ // If the type is a "char" or "varchar" then the length needs to be stored
+		attr->char_length = char_len;
 	}else
-		attr->char_len = -1; // char length disregarded for all other types
+		attr->char_length = -1; // char length disregarded for all other types
 	if( store_default == 1 ){
-		attr->default_val = def_val;
+		attr->default_value = def_val;
 	}
 }
 
@@ -316,10 +317,10 @@ int write_catalogs(char *db_loc, catalogs* logs){
 			fwrite(&(logs->all_tables[indx].attributes[i].notnull), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].primarykey), sizeof(int), 1, fp);
 			fwrite(&(logs->all_tables[indx].attributes[i].unique), sizeof(int), 1, fp);
-			fwrite(&(logs->all_tables[indx].attributes[i].char_len), sizeof(int), 1, fp);
-			fwrite(&(logs->all_tables[indx].attributes[i].default_there), sizeof(int), 1, fp);
-			if( logs->all_tables[indx].attributes[i].default_there == 1 ){
-				fwrite(&(logs->all_tables[indx].attributes[i].default_val), sizeof(union record_item), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].char_length), sizeof(int), 1, fp);
+			fwrite(&(logs->all_tables[indx].attributes[i].store_default), sizeof(int), 1, fp);
+			if( logs->all_tables[indx].attributes[i].store_default == 1 ){
+				fwrite(&(logs->all_tables[indx].attributes[i].default_value), sizeof(union record_item), 1, fp);
 			}
 			fwrite(&name_size, sizeof(int), 1, fp);
 			fwrite(logs->all_tables[indx].attributes[i].name, sizeof(char), name_size, fp);
@@ -989,9 +990,39 @@ void pretty_print_table(catalogs* logs, table_catalog* tcat){
 void pretty_print_attributes( attr_info* attributes, int size ){
 	for( int i = 0; i<size; i++ ){
 		char* str_type = type_string( attributes[i].type );
-		printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
-			attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE",
-			attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+		if( attributes[i].type == 3 || attributes[i].type == 4 ){
+			if( attributes[i].store_default == 1 ){ // print default value
+				printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, size: %d, default_value: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+					attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", 
+					attributes[i].char_length, (attributes[i].type == 3) ? attributes[i].default_value.c : attributes[i].default_value.v,
+					attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+			}else{ // no default value to print
+				printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, size: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+					attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", attributes[i].char_length,
+					attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+			}
+		}else{
+			if( attributes[i].store_default == 1 ){
+				if( attributes[i].type == 0 ){ // integer default
+					printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, default_value: %d, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+						attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", attributes[i].default_value.i,
+						attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+				}else if( attributes[i].type == 1 ){ // double default
+					printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, default_value: %f, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+						attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", attributes[i].default_value.d,
+						attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+				}else{
+					printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, default_value: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+						attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE", 
+						(attributes[i].default_value.b) ? "TRUE" : "FALSE",
+						attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+				}
+			}else{
+				printf("\tName: '%s' --> attr_id: %d, type: %s, deleted: %s, Constraints: [notnull: %d, primarykey: %d, unique: %d]\n",
+					attributes[i].name, i, str_type, attributes[i].deleted ? "TRUE" : "FALSE",
+					attributes[i].notnull, attributes[i].primarykey, attributes[i].unique);
+			}
+		}
 	}
 }
 

@@ -26,7 +26,8 @@ int alter_table( catalogs *cat, int token_count, char** tokens );
 int drop_attribute(catalogs *cat, char *table, char *attribute); 
 int add_attribute_table(catalogs *cat, char *table, char *name, char *type, union record_item def_val, int default_there, int char_len);
 int health_check( );
-int confirm_name(char* attr_name);
+int confirm_name( char* attr_name );
+int get_default_value(char* value, char *attr_name, int type, int str_len, union record_item *record);
 bool is_number( char* str );
 
 #endif
