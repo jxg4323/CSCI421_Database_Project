@@ -546,11 +546,11 @@ int get_default_value(char* value, char *attr_name, int type, int str_len, union
 				fprintf(stderr, "ERROR: '%s' default value is too large for the '%s' attribue.\n", value, attr_name);
 				result = -1;
 			}
-			else{ memcpy(record->c, value, str_len); }
+			else{ strcpy(record->c, value); }
 			break;
 		case 4: // varchar
 			if( null ){ memset(record->v, '\0', (str_len)*sizeof(char)); }
-			else{ memcpy(record->v, value, str_len); }
+			else{ strcpy(record->v, value); }
 			break;
 		default:
 			fprintf(stderr, "ERROR: unknown type for '%s'\n", attr_name);
