@@ -3,6 +3,23 @@
 #ifndef __DMLPARSER_H__
 #define __DMLPARSER_H__
 
+/*
+ * Logical Comparator Types stored as integers.
+ * '='  : 0
+ * '<'  : 1
+ * '>'  : 2
+ * '<=' : 3
+ * '>=' : 4
+ */
+typedef enum {eq, lt, gt, lte, gte} comparators;
+/*
+ * Mathematical Operations Types stored as integers.
+ * '+'  : 0
+ * '-'  : 1
+ * '*'  : 2
+ * '/'  : 3
+ */
+typedef enum {plus, minus, multiply, divide} math_operations;
 
 // Hold conditional statement, if attr is NULL ignore
 // if attr isn't null then value for it is place in corresponding valNUM
@@ -13,7 +30,7 @@ typedef struct conditional_cmd_struct{
 	int attr_type;
 	char* first_attr; // base attribute to check types with
 	char* other_attr;
-	char comparator[2]; // TODO: create enum for values or separate struct
+	comparators comparator; 
 	union record_item val1;
 	union record_item val2;
 } conditional_cmd;
@@ -22,7 +39,7 @@ typedef set_attr{
 	char* attribute;
 	int type;
 	bool math_op; // True: execute operation on data
-	char* operation; // '+', '-', '*', '/'
+	math_operations operation; // '+', '-', '*', '/'
 	char* new_value;
 } set;
 

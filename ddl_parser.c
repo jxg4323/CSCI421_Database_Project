@@ -82,8 +82,8 @@ int parse_create_statement( char * statement ){
                 i++, total++;
             }
             int str_len = strlen(token);
-            data[i] = (char *)malloc(str_len*sizeof(char));
-            memset(data[i], '\0', str_len*sizeof(char));
+            data[i] = (char *)malloc((str_len+1)*sizeof(char)); // TODO: might have to add +1
+            memset(data[i], '\0', (str_len+1)*sizeof(char));
             if( token[str_len-1] == ',' ){
                 strncpy(data[i], token, str_len-1);
                 // add empty token after
@@ -257,7 +257,7 @@ int char_occur_count( char* str, char c ){
 }
 
 void print_logs( ){
-    if( logs != NULL ){
+    if( logs != NULL && logs->table_count != 0 ){
         pretty_print_catalogs( logs );
     }else{
         printf("{EMPTY}\n");

@@ -59,7 +59,7 @@ void manage_foreign_rels(table_catalog* t_cat, int rel_count, bool increase){
 void manage_prim_tuple(table_catalog *t_cat, int prim_size, bool increase){
 	if( increase ){
 		t_cat->primary_tuple = (int *)realloc(t_cat->primary_tuple, prim_size*sizeof(int));
-		t_cat->primary_size++;
+		t_cat->primary_size = prim_size;
 	}else{
 		t_cat->primary_tuple = (int *)malloc(prim_size*sizeof(int));
 		t_cat->primary_size = prim_size;
@@ -98,7 +98,7 @@ void init_catalog(table_catalog* catalog, int tid, int meta_id, int a_size, int 
 	catalog->attributes = (attr_info*)malloc(a_size*sizeof(attr_info));
 	catalog->relations = (foreign_data*)malloc(f_size*sizeof(foreign_data));
 	catalog->primary_tuple = (int *)malloc(p_size*sizeof(int));
-	catalog->unique_tuples = (unique *)malloc(u_size*sizeof(int));
+	catalog->unique_tuples = (unique *)malloc(u_size*sizeof(unique)); 
 }
 
 /*
@@ -158,7 +158,7 @@ void init_unique_tuple(unique* udata, int tup_size, int *tup){
  */
 void init_primary_tuple(table_catalog *t_cat, int *tuple, int size){
 	t_cat->primary_size = size;
-	t_cat->primary_tuple = (int *)malloc(size*sizeof(int));
+	// t_cat->primary_tuple = (int *)malloc(size*sizeof(int));
 	memcpy(t_cat->primary_tuple, tuple, size*sizeof(int));
 }
 
@@ -169,6 +169,7 @@ void init_primary_tuple(table_catalog *t_cat, int *tuple, int size){
 int read_catalogs(char *db_loc, catalogs* logs){
 	int count = 0;
 	int indx = 0;
+	bool continue_read = true;
 	FILE* fp;
 
 	int file_len = strlen(db_loc) + TABLE_CATALOG_FILE_LEN;
@@ -184,7 +185,7 @@ int read_catalogs(char *db_loc, catalogs* logs){
 	}
 	fread(&(count), sizeof(int), 1, fp);
 	manage_catalogs( logs, count, false ); // assume the table catalogs array hasn't been allocated
-	while( 1 ){
+	while( continue_read && count != 0 ){
 		int t_id, storage_loc, a_count, foreign_count, unique_count, prim_count, name_size;
 		fread(&t_id, sizeof(int), 1, fp);
 		fread(&storage_loc, sizeof(int), 1, fp);
@@ -252,10 +253,11 @@ int read_catalogs(char *db_loc, catalogs* logs){
 		// read primary key tuple
 		int *p_temp = (int *)malloc(prim_count*sizeof(int));
 		fread(p_temp, sizeof(int), prim_count, fp);
+		manage_prim_tuple( &(logs->all_tables[indx]), prim_count, false );
 		init_primary_tuple(&(logs->all_tables[indx]), p_temp, prim_count);
 
 		if(feof(fp) || indx >= (count -1)){ // read until end of file or no more tables
-			break;
+			continue_read = false;
 		}
 		free( temp );
 		free( p_temp );
@@ -810,6 +812,10 @@ void terminate_catalog(catalogs *logs){
 		// confirm primary key hasn't already been freed
 		if( logs->all_tables[i].primary_size >= 0){
 			free( logs->all_tables[i].primary_tuple );
+		}
+		// confirm unique key hasn't already been freed
+		if( logs->all_tables[i].unique_size >= 0 ){
+			free( logs->all_tables[i].unique_tuples );
 		}
 	}
 	free( logs->all_tables );
