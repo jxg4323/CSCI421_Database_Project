@@ -1,4 +1,4 @@
-#include "dml_parse.h"
+#include "dmlparser.h"
 
  /*
   * This function handles the parsing of DML statments
@@ -73,7 +73,7 @@ update_cmd* build_update( int token_count, char** tokens );
 
 /*
  * Loop through the tokens provided and confirm their validity
- * create a new select_cmd structure and fill in the data accordingly.
+ * create a new delete_cmd structure and fill in the data accordingly.
  * The token layout should match the statement, using the keywords to
  * separate sections of the delete query.
  *
@@ -83,23 +83,88 @@ update_cmd* build_update( int token_count, char** tokens );
  * @return new delete command structure that the user is responsible for freeing 
       if no errors were encountered, o.w. return NULL
  */
-delete_cmd* build_delete( int token_count, char** tokens );
+delete_cmd* build_delete( int token_count, char** tokens ){
+
+}
 
 /*
  * Loop through the tokens provided and confirm their validity
- * create a new select_cmd structure and fill in the data accordingly.
+ * create a new insert_cmd structure and fill in the data accordingly.
  * The token layout should match the statement, using the keywords to
  * separate sections of the insert query as well as a '\0' character to
  * separate different records.
  *
  * @parm: token_count - number of tokens to parse
- * @parm: tokens - Tokens sepereated by 'inset', 'into', and 'values'
+ * @parm: tokens - Tokens sepereated by 'insert', 'into', and 'values'
  *          ex: ['insert', 'into', 'Person', 'values', '1', '"foo"', 'true', '2.1', 
             '\0', '3', '"baz"', 'true', '4.14', '\0']
  * @return new update command structure that the user is responsible for freeing 
       if no errors were encountered, o.w. return NULL
  */
-insert_cmd* build_insert( int token_count, char** tokens );
+insert_cmd* build_insert( int token_count, char** tokens ){
+    if(token_count < 6){ return null; }
+    if( strcmp(tokens[0],"insert") != 0 || strcmp(tokens[1],"into") !=0
+        || strcmp(tokens[3],"values") !=0){ return null; }
+    table_catalog* table = get_catalog_p(all_table_schemas, tokens[2]);
+    if( table == NULL ){ return null; }
+    bool isValid = true;
+    int current_token = 4;
+    int current_record = 0;
+    int current_attr = 0;
+    int attr_count = table->attribute_count;
+    int num_records = (token_count - 4)/(attr_count + 1); //TODO: check valid attribute counts in tokens
+    union record_item** records = malloc(sizeof(union record_item*) * num_records);
+    for( int i = 0; i < num_records; i++){
+        records[i] = malloc(sizeof(union record_item) * attr_count);
+    }
+    while(current_token < token_count && current_record < num_records && isValid == true){
+        while(current_attr < attr_count && isValid == true){
+            union record_item item;
+            int attr_type = table->attributes[current_attr].type;
+            switch( type ){
+                case 0: // int
+                    item.i = atoi(tokens[current_token]);
+                case 1: // double
+                    item.d = atof(tokens[current_token]);
+                case 2: // bool
+                    if(strcmp("true", tokens[current_token]) == 0){
+                        item.b = true;
+                    } else if(strcmp("false", tokens[current_token]) == 0){
+                        item.b = false;
+                    } else {
+                        isValid = false;
+                    }
+                case 3: // char
+                    int len = table->attributes[current_attr].char_length;
+                    if( len > strlen(tokens[current_token])){
+                        isValid = false;
+                    } else {
+                        item.c = tokens[current_token];
+                    }
+                case 4: // varchar
+                    item.v = tokens[current_token];
+            }
+            if(isValid == true){
+                records[current_record][current_attr] = item;
+            }
+            current_token++;
+        }
+        current_record++;
+    }
+    if(isValid == true){
+        insert_cmd* command = malloc(sizeof(insert_cmd));
+        command->table_id = table->id;
+        command->records = records;
+        command->num_records = num_records;
+        return command;
+    } else {
+        for( int i = 0; i < num_records; i++){
+            free(records[i]);
+        }
+        free(records);
+        return NULL;
+    }
+}
 
 /*
  * Loop through the tokens provided and confirm their validity
