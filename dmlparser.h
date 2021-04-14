@@ -37,11 +37,10 @@ typedef struct conditional_cmd_struct{
 	int first_table_id;
 	int other_table_id;
 	int attr_type;
-	char* first_attr; // base attribute to check types with
-	char* other_attr;
+	int first_attr; // base attribute to check types with
+	int other_attr;
 	comparators comparator; 
-	union record_item val1;
-	union record_item val2;
+	union record_item value;
 	bool result_value;
 } conditional_cmd;
 
@@ -209,7 +208,10 @@ int execute_update( update_cmd* update );
 int execute_delete( delete_cmd* delete );
 
 // Helper Functions  --> GOOD
-void set_condition_info( conditional_cmd* cond, int fid, int sid, int attrType, comparators c, char* fAttr, char* oAttr, union record_item v1, union record_item v2 );
+void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 );
+comparators get_comparator( char* c );
+bool is_attribute( char* check );
+bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas );
 where_cmd* new_where_node();
 conditional_cmd* new_condition_cmd();
 void destroy_where_node(where_cmd* node);

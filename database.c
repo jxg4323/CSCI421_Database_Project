@@ -90,10 +90,15 @@ int shutdown_database(){
  */
 bool is_number( char *str ){
 	bool isNum = true;
+	int period_count = 0;
 	for( int i = 0; i < strlen(str); i++ ){
 		if( !isdigit(str[i]) ){ isNum = false; }
+		if( str[i] == '.' ){
+			isNum = true;
+			period_count++;
+		}
 	}
-	return isNum;
+	return isNum && period_count <= 1;
 }
 
 /*

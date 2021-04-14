@@ -91,6 +91,7 @@ void pretty_print_primary_tuples( table_catalog* tcat, int* prim_tup, int size )
 char *get_attr_name( catalogs* logs, char *table_name, int attr_id );    //   --> GOOD
 int* get_table_data_types( table_catalog* tcat );    //   --> GOOD
 void delete_table( table_catalog* tcat );    //   --> GOOD
+int get_attr_type( table_catalog* tcat, int attr_id );
 
 // Catalog Functions
 catalogs* initialize_catalogs();  //   --> GOOD
