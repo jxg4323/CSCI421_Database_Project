@@ -99,7 +99,7 @@ typedef struct delete_cmd_struct{
  * @return new select command structure that the user is responsible for freeing 
  			if no errors were encountered, o.w. return NULL
  */
-select_cmd* build_select( int token_count, char** tokens );
+select_cmd* build_select( int token_count, char** tokens, catalogs* schemas );
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -113,7 +113,7 @@ select_cmd* build_select( int token_count, char** tokens );
  * @return new update command structure that the user is responsible for freeing 
  			if no errors were encountered, o.w. return NULL
  */
-update_cmd* build_update( int token_count, char** tokens );
+update_cmd* build_update( int token_count, char** tokens, catalogs* schemas );
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -127,7 +127,7 @@ update_cmd* build_update( int token_count, char** tokens );
  * @return new delete command structure that the user is responsible for freeing 
  			if no errors were encountered, o.w. return NULL
  */
-delete_cmd* build_delete( int token_count, char** tokens );
+delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas );
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -143,7 +143,7 @@ delete_cmd* build_delete( int token_count, char** tokens );
  * @return new update command structure that the user is responsible for freeing 
  			if no errors were encountered, o.w. return NULL
  */
-insert_cmd* build_insert( int token_count, char** tokens );
+insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas );
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -165,7 +165,7 @@ insert_cmd* build_insert( int token_count, char** tokens );
  * @return new update command structure that the user is responsible for freeing 
  			if no errors were encountered, o.w. return NULL
  */
-where_cmd* build_where( int table_id, bool multi_table, int token_count, char** tokens ); // NEED to deal with multiple tables
+where_cmd* build_where( int table_id, bool multi_table, int token_count, char** tokens, catalogs* schemas ); // NEED to deal with multiple tables
 
 /*
  * Take a cartesian product of the tables in the table_ids array
@@ -175,7 +175,7 @@ where_cmd* build_where( int table_id, bool multi_table, int token_count, char** 
  * @parm: table_ids - Table Schema Ids of the tables
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
-union record_item** cartesian_product( int num_tables, int* table_ids );
+union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ); 
 
 /*
  * Execute the where conditionals with the values from provided record.

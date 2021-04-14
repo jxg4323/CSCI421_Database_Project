@@ -66,6 +66,7 @@ int execute_non_query(char * statement){
 int execute_query(char * query, union record_item *** result){
 	// This function will be used when executing database queries that return tables of data.
 	// It is just stubbed out for now.
+	catalogs* schemas = get_schemas(); // used to pass table info to dmlparser
 	return 0;
 }
 

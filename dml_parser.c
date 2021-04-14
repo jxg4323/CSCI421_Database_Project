@@ -116,12 +116,16 @@ where_cmd* build_where( int table_id, bool multi_table, int token_count, char** 
     }
     int token_idx = 1;
     // Loop through each token creating conditional_cmds 
-    for(token_idx; token_idx < token_count; token_idx++){
+    for(token_idx; token_idx < token_count; token_idx+3){
         // If condition then build condition struct
         // else if command such as 'and','or' then store that value
         if( multi_table ){ // the table name should be in the table prefaced by a period
-            
+
         }
+        int first_attr_loc = token_idx+1;
+        int comparator_loc = token_idx+2;
+        int other_attr_loc = token_idx+3;
+        // check attribute type --> I can assume the first_attr_loc is an attr
     }
 }
 
@@ -175,6 +179,17 @@ void set_condition_info( conditional_cmd* cond, int fid, int sid, int attrType, 
     cond->comparator = c;
     cond->val1 = v1;
     cond->val2 = v2;
+}
+
+/*
+ * Confirm the provided attribute is in the table provided.
+ *
+ * @parm: table_id - table schema ID the attribute should be in
+ * @parm: attr_name - name of attribute to look for.
+ * @return: 0 if found and -1 otherwise.
+ */
+int confirm_attr( int table_id, char* attr_name ){
+
 }
 
 /*

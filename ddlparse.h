@@ -25,6 +25,6 @@ int terminate_logs( char* db_loc );
 void print_tokens( char** tokens, int count );
 void print_logs( );
 int read_logs( char* db_loc );
-
+catalog* get_schemas( );
 
 #endif
