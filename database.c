@@ -52,9 +52,20 @@ int execute_non_query(char * statement){
 	return 0;
 }
 
-// This function will be used when executing database queries that return tables of data.
-// It is just stubbed out for now.
+/*
+ * This function will be used to execute SQL statement that
+ * return data. For instance, SQL SELECT queries.
+ *
+ * @param query - the SQL query to execute
+ * @param result - a 2d array of record_item (output variable).
+ *                This will be used to output the values of the query.
+                  This will be a pointer to the first item in the 2d array.
+				  The user of the function will be resposible for freeing.
+ * @return the number of tuples in the result, -1 if upon error.
+ */
 int execute_query(char * query, union record_item *** result){
+	// This function will be used when executing database queries that return tables of data.
+	// It is just stubbed out for now.
 	return 0;
 }
 
@@ -296,7 +307,36 @@ void usage(bool error){
 int main(int argc, char *argv[])
 {
 
-	int run_result = run( argc,argv );
+	//int run_result = run( argc,argv );
+
+	// Condition Stack Test
+	where_cmd* top = NULL;
+
+	conditional_cmd* first = new_condition_cmd();
+	conditional_cmd* secnd = new_condition_cmd();
+
+	first->first_attr = "x";
+	first->comparator = gt;
+	first->val1.i = 0;
+	secnd->first_attr = "y";
+	secnd->comparator = lt;
+	secnd->val1.i = 3;
+
+	push_where_node(&top, COND, first);
+	push_where_node(&top, AND, NULL);
+	push_where_node(&top, COND, secnd);
+
+	where_cmd* temp = peek(top);
+
+	pop_where_node(&top);
+	pop_where_node(&top);
+	pop_where_node(&top);
+
+	if( where_is_empty(top) ){
+		printf("Removed all nodes\n");
+	}else{
+		printf("There is still some left\n");
+	}
 
 	return 0;
 }
