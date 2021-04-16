@@ -818,3 +818,18 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, unio
     free(records);
     return 1;
 }
+
+// Helper Functions
+/*
+ * Count the number of occurences of the given character 
+ * @param c in the provided string and return the count.
+ * This function does NOT ignore case.
+ */
+int char_occur_count( char* str, char c ){
+    int str_len = strlen(str);
+    int occur = 0;
+    for( int i = 0; i < str_len; i++ ){
+        if( str[i] == c ){ occur++; } 
+    }
+    return occur;
+}

@@ -94,21 +94,35 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){}
  * separate sections of the where condition mainting a local pointer to
  * the next conditional statement in the where_cmd.
  * 
- * @parm: table_id - Table Schema Id for table the conditional will be on
- * @parm: multi_table - If true then there are multiple tables involved in 
-            the conditional statement and variables will be 
-            preceeded by their table name in the token. EX:
-            ['foo.id', 'bar.NAME']
+ * @parm: table_names - Array of table names involved in statement
+ * @parm: num_tables - Number of tables involved in the statement, the value
+                       is assumed to be 1, when value is > 1 then the attribute
+                       names have to be checked for uniqueness and if their not
+                       unique then the attribute tokens are as follow EX:
+                       ['foo.id', 'bar.id']
  * @parm: token_count - number of tokens to parse
  * @parm: tokens - Tokens sepereated by 'where', 'and', and 'or'
  *          ex: ['where', 'id', '<', '8', 
             'and', 'name', '=', 'blahblah', 
             'or', 'AGE', '>=', '21', '\0']
  * @return new update command structure that the user is responsible for freeing 
-      if no errors were encountered, o.w. return NULL
+           if no errors were encountered, o.w. return NULL
  */
-where_cmd* build_where( int table_id, bool multi_table, int token_count, char** tokens, catalogs* schemas ){ 
-    // TODO: NEED to deal with multiple tables
+where_cmd* build_where( char** table_names, int num_tables, int token_count, char** tokens, catalogs* schemas ){ 
+   
+    int table_id = -1;
+    int* all_tables = (int*)malloc(num_tables*sizeof(int));
+
+    // get list of tables if there are more than one
+    for( int i = 0; i<num_tables; i++){
+        if( (all_tables[i] = get_catalog( schemas, table_names[i] )) == -1 ){
+            fprintf("'%s' doesn't exist in this database.\n", table_names[i]);
+            free( all_tables );
+            return NULL;
+        }
+    }
+    table_id = all_tables[0];
+
     where_cmd* top = NULL;
     if( strcasecmp(tokens[0], "where") != 0 ){
       fprintf(stderr, "'%s' doesn't match proper \"where\" conditions\n", tokens[0]);
@@ -117,49 +131,76 @@ where_cmd* build_where( int table_id, bool multi_table, int token_count, char** 
     int token_idx = 1;
     // Loop through each token creating conditional_cmds 
     for(token_idx; token_idx < token_count; token_idx+3){
-        // If condition then build condition struct
-        // else if command such as 'and','or' then store that value
-        if( multi_table ){ // the table name should be in the table prefaced by a period
-
-        }
-        int first_attr_loc = token_idx+1;
-        int comparator_loc = token_idx+2;
-        int other_attr_loc = token_idx+3;
+        int first_attr_loc = token_idx;
+        int comparator_loc = token_idx+1;
+        int other_attr_loc = token_idx+2;
         int fid = -1;
         int type = -1;
         int otherId = -1;
+        int first_tab_id = -1;
+        int other_tab_id = -1;
         union record_item value.i = INT_MAX;
         comparator c = -1;
+
+        char* first_attr_name = get_attr_name( tokens[first_attr_loc] );
         // check attribute type --> I can assume the first_attr_loc is an attr
-        if( (fid = get_attr_loc( schemas->all_tables[table_id], tokens[first_attr_loc])) < 0 ){
-            fprintf(stderr, "'%s' isn't an attribute in table %s\n", tokens[first_attr_loc], schemas->all_tables[table_id].table_name );
+        if( (fid = find_attribute( all_tables, num_tables, &first_tab_id, first_attr_name, schemas)) < 0 ){
+            destroy_where_stack( &top );
             return NULL;
         }
-        type = get_attr_type( schemas->all_tables[table_id],fid );
+
+        type = get_attr_type( schemas->all_tables[first_tab_id],fid );
         // check comparator
         if( (c = get_comparator( tokens[comparator_loc] )) == -1 ){
             fprintf(stderr,"'%s' isn't a known comparator.\n", tokens[comparator_loc]);
+            destroy_where_stack( &top );
             return NULL;
         }
         // if other has quotes or true/false or is digit then its a value otherwise attr
         if( is_attribute( tokens[other_attr_loc] ) ){
-            if( (otherId = get_attr_loc( schemas->all_tables[table_id], tokens[first_attr_loc])) < 0 ){
-                fprintf(stderr, "'%s' isn't an attribute in table %s\n", tokens[first_attr_loc], schemas->all_tables[table_id].table_name );
+            char* other_attr_name = get_attr_name( tokens[other_attr_loc] );
+            if( (otherId = find_attribute( all_tables, num_tables, &other_tab_id, other_attr_name, schemas)) < 0 ){
+                destroy_where_stack( &top );
                 return NULL;
             }
             // type check, same table
-            if( !check_types( table_id, fid, otherId, false, -1, schemas ) ){
+            if( !check_types( first_tab_id, fid, otherId, true, other_tab_id, schemas ) ){
                 fprintf(stderr, "Attribute type mismatch.\n" );
+                destroy_where_stack( &top );
                 return NULL;
             }
             conditional_cmd* temp = new_condition_cmd();
-            set_condition_info( temp, table_id, table_id, type, c, fid, otherId, value, value);
+            set_condition_info( temp, first_tab_id, other_tab_id, type, c, fid, otherId, value );
             push_where_node(&top, COND, temp);
+            free( other_attr_name );
         }else{ // comparing against a value
-            // Use get_default_value to fill value --> ignore char length for comparisons
-            get_default_value( tokens[other_attr_loc], tokens[first_attr_loc], type, 255, &record_item );
+            if( set_compare_value( tokens[other_attr_loc], type, &value ) < 0 ){
+                destroy_where_stack( &top );
+                return -1;
+            }
+            conditional_cmd* temp = new_condition_cmd();
+            set_condition_info( temp, first_tab_id, -1, type, c, fid, otherId, value );
+            push_where_node(&top, COND, temp);
         }
+
+        // next token can be either AND, OR, '\0'
+        if( strcasecmp(tokens[token_idx+3], "and") == 0 ){ // add AND node
+            push_where_node(&top, AND, NULL);
+        }else if( strcasecmp(tokens[token_idx+3], "or") == 0 ){ // add OR node
+            push_where_node(&top, OR, NULL);
+        }else if( strcasecmp(tokens[token_idx+3], "\0") == 0 ){ break; }
+        else{
+            fprintf(stderr, "'%s' is an unkonwn relational operator.\n", tokens[token_idx+3]);
+            destroy_where_stack( &top );
+            return NULL;
+        }
+        // increment to start of next conditional
+        token_idx++;
     }
+
+    // frees
+    free( all_tables );
+    free( first_attr_name );
 }
 
 
@@ -213,6 +254,74 @@ void set_condition_info( conditional_cmd* cond, int fTid, int oTid int attrType,
     cond->other_attr = oAttr;
     cond->comparator = c;
     cond->value = v1;
+}
+
+/*
+ * Tokenize the attribute token based on '.' and assume
+ * the attribute name is in the last token. 
+ * @return the name of the attribute in the token which the user
+           is responsible for freeing.
+ */
+char* get_attr_name( char* attr_token ){
+    int period_count = char_occur_count( attr_token, '.' );
+    char* temp = strdup( attr_token );
+    char* hold;
+    char* attr_name = NULL;
+    switch( period_count ){
+        case 0:
+            hold = strtok( temp, "." );
+            attr_name = (char *)malloc(strlen(hold)*sizeof(char));
+            strcpy( attr_name, hold );
+            break;
+        case 1:
+            strtok( temp, "." );
+            hold = strtok( NULL, "." );
+            attr_name = (char *)malloc(strlen(hold)*sizeof(char));
+            strcpy( attr_name, hold );
+            break;
+        default:
+            attr_name = NULL;
+            fprintf(stderr, "'%s' isn't a valid attribute token.\n", attr_token );
+    }
+    free( temp );
+    return attr_name;
+}
+
+/*
+ * 
+ * Search through list of table ids for the provided attribute. 
+ *
+ * @parm: table_ids - List of table schema ids to search through
+ * @parm: num_tables - Number of tables in the list
+ * @parm: par_tab_id - return parameter for table schema id where
+                       attribute was found
+ * @parm: attr_name - attribute name to search for
+ * @parm: schemas - List of Table Schema catalogs
+ * @return: attribute location if found in the list of table schema ids
+            if attribute not found then return -1 and print error.
+            if attribute found in multiple tables return -1 and print error.
+ */
+int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas ){
+    int found = -1;
+    int find_count = 0;
+    for( int i = 0; i<num_tables; i++ ){
+        int temp = -1;
+        table_catalog* tcat = schemas->all_tables[table_ids[i]];
+        if( (temp = get_attr_loc( tcat, attr_name )) > 0 ){
+            find_count++;
+            found = temp;
+            *par_tab_id = temp;
+        }
+    }
+    if( found < 0 ){
+        fprintf(stderr, "None of the tables contain an attribute '%s'\n.", attr_name);
+        return -1;
+    }
+    if( find_count > 1 ){
+        fprintf(stderr, "Multiple tables have an attribute named '%s'\n.", attr_name);
+        return -1;
+    }
+    return found;
 }
 
 /*
@@ -281,9 +390,10 @@ int get_value_type( char* value, int attr_type ){
  * on the type fill the corresponding return parameter with
  * the associated value and return 1 for success.
  */
-int set_compare_value( char* value, int attr_id, int type, int table_id, union record_item* result, catalogs* schemas ){
+int set_compare_value( char* value, int type, union record_item* r_value ){
     bool null = (strcasecmp(value,"null") == 0);
     int val_type = -1;
+    int str_len = strlen(value);
     int result = 0;
     char *eptr;
     if( (val_type = get_value_type( value, type )) == -1 ){
@@ -292,32 +402,25 @@ int set_compare_value( char* value, int attr_id, int type, int table_id, union r
     }
     switch( type ){
         case 0: //int
-            if( null ){ record->i = INT_MAX; }
-            else{ record->i = atoi(value); }
+            if( null ){ r_value->i = INT_MAX; }
+            else{ r_value->i = atoi(value); }
             break;
         case 1: // double
-            if( null ){ record->d = INT_MAX; }
-            else{ record->d = strtod( value,&eptr ); }
+            if( null ){ r_value->d = INT_MAX; }
+            else{ r_value->d = strtod( value,&eptr ); }
             break;
         case 2: // boolean
-            if( null ){ record->b = INT_MAX; }
-            if(strcasecmp(value, "true") == 0){
-                record->b = true;
-            } else {
-                record->b = false;
-            }
+            if( null ){ r_value->b = INT_MAX; }
+            if(strcasecmp(value, "true") == 0){ r_value->b = true; }
+            else { r_value->b = false; }
             break;
         case 3: // char
-            if( null ){ memset(record->c, '\0', (str_len)*sizeof(char)); }
-            else if( str_len <= strlen(value) ){ // char default value is beyond size of char attribute
-                fprintf(stderr, "ERROR: '%s' default value is too large for the '%s' attribue.\n", value, attr_name);
-                result = -1;
-            }
-            else{ strcpy(record->c, value); }
+            if( null ){ memset(r_value->c, '\0', (str_len)*sizeof(char)); }
+            else{ strcpy(r_value->c, value); }
             break;
         case 4: // varchar
-            if( null ){ memset(record->v, '\0', (str_len)*sizeof(char)); }
-            else{ strcpy(record->v, value); }
+            if( null ){ memset(r_value->v, '\0', (str_len)*sizeof(char)); }
+            else{ strcpy(r_value->v, value); }
             break;
         default:
             fprintf(stderr, "ERROR: unknown type for '%s'\n", attr_name);
@@ -378,6 +481,13 @@ conditional_cmd* new_condition_cmd(){
 void destroy_where_node(where_cmd* node){
     free( node->cond );
     free( node );
+}
+
+void destroy_where_stack(where_cmd** node){
+    pop_where_node( node );
+    if( !where_is_empty(*node) ){
+        destroy_where_stack( node );
+    }
 }
 
 /*
