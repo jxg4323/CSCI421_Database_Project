@@ -871,6 +871,19 @@ char *type_string( int type ){
 }
 
 /*
+ * Return the type the attribute is and if there isn't
+ * an attribute with that id in the provided table then
+ * return -1.
+ */
+int get_attr_type( table_catalog* tcat, int attr_id ){
+	if( tcat->attribute_count <= attr_id ){
+		return -1;
+	}else{
+		return tcat->attributes[attr_id].type;
+	}
+}
+
+/*
  * Loop through all the table catalogs and check for the deleted
  * flag is true and then increment the count.
  * Return count of tables that aren't delted other return 0.
