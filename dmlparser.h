@@ -100,6 +100,8 @@ typedef struct delete_cmd_struct{
  */
 select_cmd* build_select( int token_count, char** tokens, catalogs* schemas );
 
+int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array);
+
 /*
  * Loop through the tokens provided and confirm their validity
  * create a new select_cmd structure and fill in the data accordingly.

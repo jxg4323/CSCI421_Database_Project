@@ -43,6 +43,17 @@ int parse_dml_query(char * query, union record_item *** result){
  */
 select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){}
 
+int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array){
+    int set_count = 1;
+    int current_token = 1;
+    while( current_token < token_count ){
+        if( strcmp(tokens[current_token], "\0") == 0){
+            set_count++;
+        }
+        current_token++;
+    }
+}
+
 /*
  * Loop through the tokens provided and confirm their validity
  * create a new select_cmd structure and fill in the data accordingly.
@@ -55,7 +66,38 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){}
  * @return new update command structure that the user is responsible for freeing 
       if no errors were encountered, o.w. return NULL
  */
-update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){}
+update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
+    if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[2],"set") !=0){ return null; }
+    int current_token = 3;
+    int where_idx = -1;
+    while(current_token < token_count && where_idx == -1){
+        if(strcmp(tokens[current_token], "where") == 0){
+            where_idx = current_token;
+        }
+        current_token++;
+    }
+    table_catalog* table = get_catalog_p(schemas, tokens[2]);
+    if( table == NULL ){ return NULL; }
+    set * set_part;
+    int num_attr = build_set(where_idx - 2, tokens + (2* sizeof(char *)), table, &set_part);
+    if(num_attr == 0){ return NULL; }
+    where_cmd * where = NULL;
+    if( where_idx != -1 ){
+        where = build_where(table->id, false, token_count-where_idx, tokens + (where_idx * sizeof(char *)));
+    }
+    char ** attributes_to_update = malloc(sizeof(char *) * num_attr);
+    for(int i = 0; i < num_attr; i++){
+        attributes_to_update[i] = set_part[i].attribute;
+    }
+    update_cmd * command = malloc(sizeof(update_cmd));
+    command->table_id = table->id;
+    command->attributes_to_update = attributes_to_update;
+    command->conditions = where;
+    command->num_attributes = num_attr;
+    command->set_attrs = set_part;
+    return command;
+}
+
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -69,7 +111,20 @@ update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){}
  * @return new delete command structure that the user is responsible for freeing 
       if no errors were encountered, o.w. return NULL
  */
-delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){}
+delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){
+    if(token_count < 4){ return null; }
+    if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[1],"from") !=0
+        || strcmp(tokens[3],"where") !=0){ return null; }
+    table_catalog* table = get_catalog_p(schemas, tokens[2]);
+    if( table == NULL ){ return NULL; }
+    where_cmd where = build_where(table->id, true, token_count - 3, tokens + ((sizeof char *) * 3));
+    if( where == NULL ){ return NULL}
+    delete_cmd * command = malloc(sizeof command);
+    command->table_id = table->id;
+    command->conditions = where;
+    return command;
+}
+
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -85,18 +140,19 @@ delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){}
  * @return new update command structure that the user is responsible for freeing 
       if no errors were encountered, o.w. return NULL
  */
-insert_cmd* build_insert( int token_count, char** tokens ){
+insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
     if(token_count < 6){ return null; }
     if( strcmp(tokens[0],"insert") != 0 || strcmp(tokens[1],"into") !=0
         || strcmp(tokens[3],"values") !=0){ return null; }
-    table_catalog* table = get_catalog_p(all_table_schemas, tokens[2]);
+    table_catalog* table = get_catalog_p(schemas, tokens[2]);
     if( table == NULL ){ return null; }
     bool isValid = true;
     int current_token = 4;
     int current_record = 0;
     int current_attr = 0;
     int attr_count = table->attribute_count;
-    int num_records = (token_count - 4)/(attr_count + 1); //TODO: check valid attribute counts in tokens
+    if((token_count - 4) % (attr_count + 1) != 0 ){ return NULL; }
+    int num_records = (token_count - 4)/(attr_count + 1);
     union record_item** records = malloc(sizeof(union record_item*) * num_records);
     for( int i = 0; i < num_records; i++){
         records[i] = malloc(sizeof(union record_item) * attr_count);
@@ -133,10 +189,11 @@ insert_cmd* build_insert( int token_count, char** tokens ){
             }
             current_token++;
         }
+        current_token++;
         current_record++;
     }
     if(isValid == true){
-        insert_cmd* command = malloc(sizeof(insert_cmd));
+        insert_cmd * command = malloc(sizeof(insert_cmd));
         command->table_id = table->id;
         command->records = records;
         command->num_records = num_records;
@@ -149,7 +206,6 @@ insert_cmd* build_insert( int token_count, char** tokens ){
         return NULL;
     }
 }
-insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){}
 
 /*
  * Loop through the tokens provided and confirm their validity
