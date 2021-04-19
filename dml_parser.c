@@ -201,6 +201,7 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
     // frees
     free( all_tables );
     free( first_attr_name );
+    return top;
 }
 
 
@@ -210,18 +211,198 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
  *
  * @parm: num_tables - Number of tables to join
  * @parm: table_ids - Table Schema Ids of the tables
+ * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
-union record_item** cartesian_product( int num_tables, int* table_ids ){}
+union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ){
+
+}
 
 /*
  * Execute the where conditionals with the values from provided record.
  * The 'and' conditional takes priority and should be executed first. // "Stack maybe"
  *
+ * @parm: record - Array of records involved in the query, if there are multiple
+                   tables involved then the record contains cartesian product of
+                   the tables so it will be all records from table A + records from
+                   table B.
+ * @parm: record_size - Number of attributes in the record
+ * @parm: table_ids - Array of table schema ids in the order of the records.
+ * @parm: num_tables - Number of tables in query.
  * @return: 0 if record evaluates the where conditionals to true and
       -1 otherwirse.
  */
-int check_where_statement( where_cmd* where, union record_item* record, int record_size ){}
+int check_where_statement( where_cmd* where, union record_item* record, int record_size, catalogs* schemas ){
+    // What to do about multiple tables??
+    // Assume only one table involved in query
+    int table_id = where->cond->first_table_id;
+    where_cmd* temp = where;
+    bool result_val = false;  // assume record doesn't meet condition
+    while( !where_is_empty(temp) ){
+        switch( temp->type ){
+            case AND:
+                break;
+            case OR:
+                break;
+            case COND:
+
+                break;
+        }
+        // get next node
+        temp = temp->link;
+    }
+}
+
+/*
+ * 
+ */
+int eval_condition( conditional_cmd* cond, union record_item* record, int record_size, catalogs* schemas ){
+    bool res = false;
+    if( other_attr == -1 ){ // then evaluate with stored cond->value
+        int size = -1;
+        if( cond->attr_type == 3 || cond->attr_type == 4 ){
+            size = schemas[cond->first_table_id].attributes[first_attr].char_length;
+        }
+        cond->result_val = compare_condition( cond->comparator, cond->attr_type, size, record_item[first_attr], cond->value);
+    }else{  // evaluate based on other attribute value in record
+
+    }
+}
+
+/*
+ * Based on the 6 possible comparator types compare the provided record values
+ * in the manner that follows:
+ *
+ *      "left" <-> "comparator" <-> "right"
+ * @parm: comp - comparator
+ * @parm: type - type of attribute to compare
+ * @parm: size - size of char/varchar types if > 0 o.w. -1
+ * @parm: left - left value of expression
+ * @parm: right - right value of expression
+ * @return: true if the expressions evaluates to true and
+            false if it evaluates to false.
+ */
+bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right ){
+    bool result = false;
+    switch( comp ){
+        case eq:
+            switch( type ){
+                case 0: // int
+                    result = (left.i == right.i);
+                    break;
+                case 1: // double
+                    result = (left.d == right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b == right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) == 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) == 0);
+                    break;
+            }
+            break;
+        case lt:
+            switch( type ){
+                case 0: // int
+                    result = (left.i < right.i);
+                    break;
+                case 1: // double
+                    result = (left.d < right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b < right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) < 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) < 0);
+                    break;
+            }
+            break;
+        case gt:
+            switch( type ){
+                case 0: // int
+                    result = (left.i > right.i);
+                    break;
+                case 1: // double
+                    result = (left.d > right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b > right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) > 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) > 0);
+                    break;
+            }
+            break;
+        case lte:
+            switch( type ){
+                case 0: // int
+                    result = (left.i <= right.i);
+                    break;
+                case 1: // double
+                    result = (left.d <= right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b <= right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) <= 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) <= 0);
+                    break;
+            }
+            break;
+        case gte:
+            switch( type ){
+                case 0: // int
+                    result = (left.i >= right.i);
+                    break;
+                case 1: // double
+                    result = (left.d >= right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b >= right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) >= 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) >= 0);
+                    break;
+            }
+            break;
+        case neq:
+            switch( type ){
+                case 0: // int
+                    result = (left.i != right.i);
+                    break;
+                case 1: // double
+                    result = (left.d != right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b != right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) != 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) != 0);
+                    break;
+            }
+            break;
+    }
+    return result;
+}
+
 
 /*
  * 
@@ -246,7 +427,7 @@ int execute_update( update_cmd* update ){}
 int execute_delete( delete_cmd* delete ){}
 
 // Helper Functions
-void set_condition_info( conditional_cmd* cond, int fTid, int oTid int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){
+void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){
     cond->first_table_id = fTid;
     cond->other_table_id = oTid;
     cond->attr_type = attrType;

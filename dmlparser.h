@@ -41,7 +41,7 @@ typedef struct conditional_cmd_struct{
 	int other_attr;
 	comparators comparator; 
 	union record_item value;
-	bool result_value;
+	bool result_value;  // TODO: consider adding a bool value "use_value"
 } conditional_cmd;
 
 typedef struct set_attr{
@@ -172,6 +172,7 @@ where_cmd* build_where( int table_id, bool multi_table, int token_count, char** 
  *
  * @parm: num_tables - Number of tables to join
  * @parm: table_ids - Table Schema Ids of the tables
+ * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
 union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ); 
@@ -212,6 +213,7 @@ void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType
 comparators get_comparator( char* c );
 bool is_attribute( char* check );
 char* get_attr_name( char* attr_token );
+bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right );
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas );
 int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas );
 where_cmd* new_where_node();
