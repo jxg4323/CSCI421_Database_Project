@@ -238,35 +238,49 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
     int table_id = where->cond->first_table_id;
     where_cmd* temp = where;
     bool result_val = false;  // assume record doesn't meet condition
+    bool last_val = false;
     while( !where_is_empty(temp) ){
         switch( temp->type ){
             case AND:
+                last_val = result_val;
+                // move to next condition
+                temp = temp->link; 
+                eval_condition( temp->cond, record, schemas );
+                result_val = last_val && temp->cond->result_val;
                 break;
             case OR:
+                last_val = result_val;
+                // move to next condition
+                temp = temp->link; 
+                eval_condition( temp->cond, record, schemas );
+                result_val = last_val || temp->cond-result_val;
                 break;
             case COND:
-
+                eval_condition( temp->cond, record, schemas );
+                result_val = temp->cond->result_val;
                 break;
         }
         // get next node
         temp = temp->link;
     }
+    return (result_val) ? 0 : -1;
 }
 
 /*
- * 
+ * Evaluate conditional_cmd based on a single record, store the
+ * result of the condition in the command structure's result_value.
  */
-int eval_condition( conditional_cmd* cond, union record_item* record, int record_size, catalogs* schemas ){
-    bool res = false;
+int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas ){
+    int size = -1;
+    if( cond->attr_type == 3 || cond->attr_type == 4 ){
+        size = schemas[cond->first_table_id].attributes[first_attr].char_length;
+    }
     if( other_attr == -1 ){ // then evaluate with stored cond->value
-        int size = -1;
-        if( cond->attr_type == 3 || cond->attr_type == 4 ){
-            size = schemas[cond->first_table_id].attributes[first_attr].char_length;
-        }
         cond->result_val = compare_condition( cond->comparator, cond->attr_type, size, record_item[first_attr], cond->value);
     }else{  // evaluate based on other attribute value in record
-
+        cond->result_val = compare_condition( cond->comparator, cond->attr_type, size, record_item[first_attr], record_item[other_attr]);
     }
+    return 0;
 }
 
 /*
@@ -409,22 +423,22 @@ bool compare_condition( comparators comp, int type, int size, union record_item 
  * @return 2d array result with success and
        NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* update ){}
+union record_item** execute_select( select_cmd* select, catalogs* shcemas ){}
 
 /*
  *
  */
-int execute_insert( update_cmd* update ){}
+int execute_insert( insert_cmd* insert, catalogs* schemas ){}
 
 /*
  *
  */
-int execute_update( update_cmd* update ){}
+int execute_update( update_cmd* update, catalogs* schemas ){}
 
 /*
  *
  */
-int execute_delete( delete_cmd* delete ){}
+int execute_delete( delete_cmd* delete, catalogs* schemas ){}
 
 // Helper Functions
 void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){

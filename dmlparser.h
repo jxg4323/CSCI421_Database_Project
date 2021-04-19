@@ -191,22 +191,22 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  * @return 2d array result with success and
  		   NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* update );
+union record_item** execute_select( select_cmd* select, catalogs* shcemas );
 
 /*
  *
  */
-int execute_insert( update_cmd* update );
+int execute_insert( insert_cmd* update, catalogs* schemas );
 
 /*
  *
  */
-int execute_update( update_cmd* update );
+int execute_update( update_cmd* update, catalogs* schemas );
 
 /*
  *
  */
-int execute_delete( delete_cmd* delete );
+int execute_delete( delete_cmd* delete, catalogs* schemas );
 
 // Helper Functions  --> GOOD
 void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 );
