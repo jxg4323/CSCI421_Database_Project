@@ -15,7 +15,7 @@
   * @param statement - the DML statement to execute
   * @return 0 on sucess; -1 on failure
   */
-int parse_dml_statement( char * statement );
+int parse_dml_statement( char * statement, catalogs* schemas );
 
 /*
  * This function handles the parsing of DML statments
@@ -28,6 +28,6 @@ int parse_dml_statement( char * statement );
 				  The user of the function will be resposible for freeing.
  * @return the number of tuples in the result, -1 if upon error.
  */
-int parse_dml_query(char * query, union record_item *** result);
+int parse_dml_query(char * query, union record_item *** result, catalogs* schemas );
 
 #endif

@@ -116,7 +116,7 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
     // get list of tables if there are more than one
     for( int i = 0; i<num_tables; i++){
         if( (all_tables[i] = get_catalog( schemas, table_names[i] )) == -1 ){
-            fprintf("'%s' doesn't exist in this database.\n", table_names[i]);
+            fprintf(stderr,"'%s' doesn't exist in this database.\n", table_names[i]);
             free( all_tables );
             return NULL;
         }
@@ -139,17 +139,18 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
         int otherId = -1;
         int first_tab_id = -1;
         int other_tab_id = -1;
-        union record_item value.i = INT_MAX;
-        comparator c = -1;
+        union record_item value;
+        value.i = INT_MAX;
+        comparators c = -1;
 
-        char* first_attr_name = get_attr_name( tokens[first_attr_loc] );
+        char* first_attr_name = get_attr_name_from_token( tokens[first_attr_loc] );
         // check attribute type --> I can assume the first_attr_loc is an attr
         if( (fid = find_attribute( all_tables, num_tables, &first_tab_id, first_attr_name, schemas)) < 0 ){
             destroy_where_stack( &top );
             return NULL;
         }
 
-        type = get_attr_type( schemas->all_tables[first_tab_id],fid );
+        type = get_attr_type( &(schemas->all_tables[first_tab_id]),fid );
         // check comparator
         if( (c = get_comparator( tokens[comparator_loc] )) == -1 ){
             fprintf(stderr,"'%s' isn't a known comparator.\n", tokens[comparator_loc]);
@@ -158,7 +159,7 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
         }
         // if other has quotes or true/false or is digit then its a value otherwise attr
         if( is_attribute( tokens[other_attr_loc] ) ){
-            char* other_attr_name = get_attr_name( tokens[other_attr_loc] );
+            char* other_attr_name = get_attr_name_from_token( tokens[other_attr_loc] );
             if( (otherId = find_attribute( all_tables, num_tables, &other_tab_id, other_attr_name, schemas)) < 0 ){
                 destroy_where_stack( &top );
                 return NULL;
@@ -176,7 +177,7 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
         }else{ // comparing against a value
             if( set_compare_value( tokens[other_attr_loc], type, &value ) < 0 ){
                 destroy_where_stack( &top );
-                return -1;
+                return NULL;
             }
             conditional_cmd* temp = new_condition_cmd();
             set_condition_info( temp, first_tab_id, -1, type, c, fid, otherId, value );
@@ -196,11 +197,11 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
         }
         // increment to start of next conditional
         token_idx++;
+        free( first_attr_name );
     }
 
     // frees
     free( all_tables );
-    free( first_attr_name );
     return top;
 }
 
@@ -246,18 +247,18 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
                 // move to next condition
                 temp = temp->link; 
                 eval_condition( temp->cond, record, schemas );
-                result_val = last_val && temp->cond->result_val;
+                result_val = last_val && temp->cond->result_value;
                 break;
             case OR:
                 last_val = result_val;
                 // move to next condition
                 temp = temp->link; 
                 eval_condition( temp->cond, record, schemas );
-                result_val = last_val || temp->cond-result_val;
+                result_val = last_val || temp->cond->result_value;
                 break;
             case COND:
                 eval_condition( temp->cond, record, schemas );
-                result_val = temp->cond->result_val;
+                result_val = temp->cond->result_value;
                 break;
         }
         // get next node
@@ -273,12 +274,12 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
 int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas ){
     int size = -1;
     if( cond->attr_type == 3 || cond->attr_type == 4 ){
-        size = schemas[cond->first_table_id].attributes[first_attr].char_length;
+        size = schemas->all_tables[cond->first_table_id].attributes[cond->first_attr].char_length;
     }
-    if( other_attr == -1 ){ // then evaluate with stored cond->value
-        cond->result_val = compare_condition( cond->comparator, cond->attr_type, size, record_item[first_attr], cond->value);
+    if( cond->other_attr == -1 ){ // then evaluate with stored cond->value
+        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr], cond->value);
     }else{  // evaluate based on other attribute value in record
-        cond->result_val = compare_condition( cond->comparator, cond->attr_type, size, record_item[first_attr], record_item[other_attr]);
+        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr], record[cond->other_attr]);
     }
     return 0;
 }
@@ -457,7 +458,7 @@ void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType
  * @return the name of the attribute in the token which the user
            is responsible for freeing.
  */
-char* get_attr_name( char* attr_token ){
+char* get_attr_name_from_token( char* attr_token ){
     int period_count = char_occur_count( attr_token, '.' );
     char* temp = strdup( attr_token );
     char* hold;
@@ -501,7 +502,7 @@ int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_
     int find_count = 0;
     for( int i = 0; i<num_tables; i++ ){
         int temp = -1;
-        table_catalog* tcat = schemas->all_tables[table_ids[i]];
+        table_catalog* tcat = &(schemas->all_tables[table_ids[i]]);
         if( (temp = get_attr_loc( tcat, attr_name )) > 0 ){
             find_count++;
             found = temp;
@@ -554,7 +555,7 @@ comparators get_comparator( char* c ){
 bool is_attribute( char* check ){
     char first = check[0];
     char last = check[strlen(check)-1];
-    return ( is_number(check) || (first == '"' && last == '"') || strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0)
+    return ( is_number(check) || (first == '"' && last == '"') || strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0);
 }
 
 /*
@@ -566,14 +567,14 @@ bool is_attribute( char* check ){
  * Return type with success and -1 otherwise.
  */
 int get_value_type( char* value, int attr_type ){
-    char first = check[0];
-    char last = check[strlen(check)-1];
+    char first = value[0];
+    char last = value[strlen(value)-1];
     int val_type = -1;
     if( is_number(value) ){ // numeric value
         val_type = (attr_type == 0) ? 0 : (attr_type == 1) ? 1 : -1;
     }else if( (first == '"' && last == '"') ){ // string value
         val_type = (attr_type == 3) ? 3 : (attr_type == 4) ? 4 : -1;
-    }else if( strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0 ){ // boolean
+    }else if( strcasecmp("true",value) == 0 || strcasecmp("false",value) == 0 ){ // boolean
         val_type = 2;
     }
     return val_type;
@@ -618,7 +619,7 @@ int set_compare_value( char* value, int type, union record_item* r_value ){
             else{ strcpy(r_value->v, value); }
             break;
         default:
-            fprintf(stderr, "ERROR: unknown type for '%s'\n", attr_name);
+            fprintf(stderr, "ERROR: unknown type for '%s'\n", value);
             result = -1;
             break;
     }
@@ -631,12 +632,12 @@ int set_compare_value( char* value, int type, union record_item* r_value ){
  * If they match return True o.w False.
  */
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas ){
-    int first_type = get_attr_type(schemas->all_tables[t_id], first);
+    int first_type = get_attr_type( &(schemas->all_tables[t_id]), first);
     int other_type = -1;
     if( multitable ){
-        other_type = get_attr_type(schemas->all_tables[ot_id], other);
+        other_type = get_attr_type( &(schemas->all_tables[ot_id]), other);
     }else{
-        other_type = get_attr_type(schemas->all_tables[t_id], other);
+        other_type = get_attr_type( &(schemas->all_tables[t_id]), other);
     }
     return (first_type == other_type) && (first_type >= 0) && (other_type >= 0);
 }
