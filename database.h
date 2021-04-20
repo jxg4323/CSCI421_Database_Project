@@ -25,6 +25,7 @@ int drop_table_ddl( catalogs *cat, char *name );
 int alter_table( catalogs *cat, int token_count, char** tokens );
 
 //helper functions
+int char_occur_count( char* str, char c );
 int drop_attribute(catalogs *cat, char *table, char *attribute); 
 int add_attribute_table(catalogs *cat, char *table, char *name, char *type, union record_item def_val, int default_there, int char_len);
 int health_check( );

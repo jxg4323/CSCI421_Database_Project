@@ -242,20 +242,6 @@ int terminate_logs( char* db_loc ){
     return -1;
 }
 
-/*
- * Count the number of occurences of the given character 
- * @param c in the provided string and return the count.
- * This function does NOT ignore case.
- */
-int char_occur_count( char* str, char c ){
-    int str_len = strlen(str);
-    int occur = 0;
-    for( int i = 0; i < str_len; i++ ){
-        if( str[i] == c ){ occur++; } 
-    }
-    return occur;
-}
-
 void print_logs( ){
     if( logs != NULL && logs->table_count != 0 ){
         pretty_print_catalogs( logs );
@@ -276,6 +262,6 @@ void print_tokens( char** tokens, int count ){
     printf("}\n");
 }
 
-catalog* get_schemas( ){
+catalogs* get_schemas( ){
     return logs;
 }

@@ -41,7 +41,7 @@ typedef struct conditional_cmd_struct{
 	int other_attr;
 	comparators comparator; 
 	union record_item value;
-	bool result_value;
+	bool result_value;  // TODO: consider adding a bool value "use_value"
 } conditional_cmd;
 
 /*typedef struct set_attr{
@@ -193,7 +193,7 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas );
  * @return new update command structure that the user is responsible for freeing 
  			if no errors were encountered, o.w. return NULL
  */
-where_cmd* build_where( int table_id, bool multi_table, int token_count, char** tokens, catalogs* schemas ); // NEED to deal with multiple tables
+where_cmd* build_where( char** table_names, int num_tables, int token_count, char** tokens, catalogs* schemas ); // NEED to deal with multiple tables
 
 /*
  * Take a cartesian product of the tables in the table_ids array
@@ -201,6 +201,7 @@ where_cmd* build_where( int table_id, bool multi_table, int token_count, char** 
  *
  * @parm: num_tables - Number of tables to join
  * @parm: table_ids - Table Schema Ids of the tables
+ * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
 union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ); 
@@ -212,38 +213,45 @@ union record_item** cartesian_product( int num_tables, int* table_ids, catalogs*
  * @return: 0 if record evaluates the where conditionals to true and
 			-1 otherwirse.
  */
-int check_where_statement( where_cmd* where, union record_item* record, int record_size );
+int check_where_statement( where_cmd* where, union record_item* record, int record_size, catalogs* schemas );
 
 /*
  * 
  * @return 2d array result with success and
  		   NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* update );
+union record_item** execute_select( select_cmd* select, catalogs* shcemas );
 
 /*
  *
  */
-int execute_insert( update_cmd* update );
+int execute_insert( insert_cmd* update, catalogs* schemas );
 
 /*
  *
  */
-int execute_update( update_cmd* update );
+int execute_update( update_cmd* update, catalogs* schemas );
 
 /*
  *
  */
-int execute_delete( delete_cmd* delete );
+int execute_delete( delete_cmd* delete, catalogs* schemas );
 
 // Helper Functions  --> GOOD
 void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 );
 comparators get_comparator( char* c );
 bool is_attribute( char* check );
+char* get_attr_name_from_token( char* attr_token );
+int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas );
+bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right );
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas );
+int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas );
+int set_compare_value( char* value, int type, union record_item* r_value );
+int get_value_type( char* value, int attr_type );
 where_cmd* new_where_node();
 conditional_cmd* new_condition_cmd();
 void destroy_where_node(where_cmd* node);
+void destroy_where_stack(where_cmd** node);
 int push_where_node(where_cmd** top, where_node_type type, conditional_cmd* condition);
 int pop_where_node(where_cmd** top);
 int where_is_empty(where_cmd* top);

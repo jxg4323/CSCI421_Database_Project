@@ -284,21 +284,115 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
  * separate sections of the where condition mainting a local pointer to
  * the next conditional statement in the where_cmd.
  * 
- * @parm: table_id - Table Schema Id for table the conditional will be on
- * @parm: multi_table - If true then there are multiple tables involved in 
-            the conditional statement and variables will be 
-            preceeded by their table name in the token. EX:
-            ['foo.id', 'bar.NAME']
+ * @parm: table_names - Array of table names involved in statement
+ * @parm: num_tables - Number of tables involved in the statement, the value
+                       is assumed to be 1, when value is > 1 then the attribute
+                       names have to be checked for uniqueness and if their not
+                       unique then the attribute tokens are as follow EX:
+                       ['foo.id', 'bar.id']
  * @parm: token_count - number of tokens to parse
  * @parm: tokens - Tokens sepereated by 'where', 'and', and 'or'
  *          ex: ['where', 'id', '<', '8', 
             'and', 'name', '=', 'blahblah', 
             'or', 'AGE', '>=', '21', '\0']
  * @return new update command structure that the user is responsible for freeing 
-      if no errors were encountered, o.w. return NULL
+           if no errors were encountered, o.w. return NULL
  */
-where_cmd* build_where( int table_id, bool multi_table, int token_count, char** tokens ){ 
-  // TODO: NEED to deal with multiple tables
+where_cmd* build_where( char** table_names, int num_tables, int token_count, char** tokens, catalogs* schemas ){
+
+    int table_id = -1;
+    int* all_tables = (int*)malloc(num_tables*sizeof(int));
+
+    // get list of tables if there are more than one
+    for( int i = 0; i<num_tables; i++){
+        if( (all_tables[i] = get_catalog( schemas, table_names[i] )) == -1 ){
+            fprintf(stderr,"'%s' doesn't exist in this database.\n", table_names[i]);
+            free( all_tables );
+            return NULL;
+        }
+    }
+    table_id = all_tables[0];
+
+    where_cmd* top = NULL;
+    if( strcasecmp(tokens[0], "where") != 0 ){
+      fprintf(stderr, "'%s' doesn't match proper \"where\" conditions\n", tokens[0]);
+      return NULL;
+    }
+    int token_idx = 1;
+    // Loop through each token creating conditional_cmds
+    for(token_idx; token_idx < token_count; token_idx+3){
+        int first_attr_loc = token_idx;
+        int comparator_loc = token_idx+1;
+        int other_attr_loc = token_idx+2;
+        int fid = -1;
+        int type = -1;
+        int otherId = -1;
+        int first_tab_id = -1;
+        int other_tab_id = -1;
+        union record_item value;
+        value.i = INT_MAX;
+        comparators c = -1;
+
+        char* first_attr_name = get_attr_name_from_token( tokens[first_attr_loc] );
+        // check attribute type --> I can assume the first_attr_loc is an attr
+        if( (fid = find_attribute( all_tables, num_tables, &first_tab_id, first_attr_name, schemas)) < 0 ){
+            destroy_where_stack( &top );
+            return NULL;
+        }
+
+        type = get_attr_type( &(schemas->all_tables[first_tab_id]),fid );
+        // check comparator
+        if( (c = get_comparator( tokens[comparator_loc] )) == -1 ){
+            fprintf(stderr,"'%s' isn't a known comparator.\n", tokens[comparator_loc]);
+            destroy_where_stack( &top );
+            return NULL;
+        }
+        // if other has quotes or true/false or is digit then its a value otherwise attr
+        if( is_attribute( tokens[other_attr_loc] ) ){
+            char* other_attr_name = get_attr_name_from_token( tokens[other_attr_loc] );
+            if( (otherId = find_attribute( all_tables, num_tables, &other_tab_id, other_attr_name, schemas)) < 0 ){
+                destroy_where_stack( &top );
+                return NULL;
+            }
+            // type check, same table
+            if( !check_types( first_tab_id, fid, otherId, true, other_tab_id, schemas ) ){
+                fprintf(stderr, "Attribute type mismatch.\n" );
+                destroy_where_stack( &top );
+                return NULL;
+            }
+            conditional_cmd* temp = new_condition_cmd();
+            set_condition_info( temp, first_tab_id, other_tab_id, type, c, fid, otherId, value );
+            push_where_node(&top, COND, temp);
+            free( other_attr_name );
+        }else{ // comparing against a value
+            if( set_compare_value( tokens[other_attr_loc], type, &value ) < 0 ){
+                destroy_where_stack( &top );
+                return NULL;
+            }
+            conditional_cmd* temp = new_condition_cmd();
+            set_condition_info( temp, first_tab_id, -1, type, c, fid, otherId, value );
+            push_where_node(&top, COND, temp);
+        }
+
+        // next token can be either AND, OR, '\0'
+        if( strcasecmp(tokens[token_idx+3], "and") == 0 ){ // add AND node
+            push_where_node(&top, AND, NULL);
+        }else if( strcasecmp(tokens[token_idx+3], "or") == 0 ){ // add OR node
+            push_where_node(&top, OR, NULL);
+        }else if( strcasecmp(tokens[token_idx+3], "\0") == 0 ){ break; }
+        else{
+            fprintf(stderr, "'%s' is an unkonwn relational operator.\n", tokens[token_idx+3]);
+            destroy_where_stack( &top );
+            return NULL;
+        }
+        // increment to start of next conditional
+        token_idx++;
+        free( first_attr_name );
+    }
+
+    // frees
+    free( all_tables );
+    return top;
 }
 
 /*
@@ -307,43 +401,237 @@ where_cmd* build_where( int table_id, bool multi_table, int token_count, char** 
  *
  * @parm: num_tables - Number of tables to join
  * @parm: table_ids - Table Schema Ids of the tables
+ * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
-union record_item** cartesian_product( int num_tables, int* table_ids ){}
+union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ){
+
+}
 
 /*
  * Execute the where conditionals with the values from provided record.
  * The 'and' conditional takes priority and should be executed first. // "Stack maybe"
  *
+ * @parm: record - Array of records involved in the query, if there are multiple
+                   tables involved then the record contains cartesian product of
+                   the tables so it will be all records from table A + records from
+                   table B.
+ * @parm: record_size - Number of attributes in the record
+ * @parm: table_ids - Array of table schema ids in the order of the records.
+ * @parm: num_tables - Number of tables in query.
  * @return: 0 if record evaluates the where conditionals to true and
       -1 otherwirse.
  */
-int check_where_statement( where_cmd* where, union record_item* record, int record_size ){}
+int check_where_statement( where_cmd* where, union record_item* record, int record_size, catalogs* schemas ){
+    // What to do about multiple tables??
+    // Assume only one table involved in query
+    int table_id = where->cond->first_table_id;
+    where_cmd* temp = where;
+    bool result_val = false;  // assume record doesn't meet condition
+    bool last_val = false;
+    while( !where_is_empty(temp) ){
+        switch( temp->type ){
+            case AND:
+                last_val = result_val;
+                // move to next condition
+                temp = temp->link;
+                eval_condition( temp->cond, record, schemas );
+                result_val = last_val && temp->cond->result_value;
+                break;
+            case OR:
+                last_val = result_val;
+                // move to next condition
+                temp = temp->link;
+                eval_condition( temp->cond, record, schemas );
+                result_val = last_val || temp->cond->result_value;
+                break;
+            case COND:
+                eval_condition( temp->cond, record, schemas );
+                result_val = temp->cond->result_value;
+                break;
+        }
+        // get next node
+        temp = temp->link;
+    }
+    return (result_val) ? 0 : -1;
+}
+
+/*
+ * Evaluate conditional_cmd based on a single record, store the
+ * result of the condition in the command structure's result_value.
+ */
+int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas ){
+    int size = -1;
+    if( cond->attr_type == 3 || cond->attr_type == 4 ){
+        size = schemas->all_tables[cond->first_table_id].attributes[cond->first_attr].char_length;
+    }
+    if( cond->other_attr == -1 ){ // then evaluate with stored cond->value
+        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr], cond->value);
+    }else{  // evaluate based on other attribute value in record
+        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr], record[cond->other_attr]);
+    }
+    return 0;
+}
+
+/*
+ * Based on the 6 possible comparator types compare the provided record values
+ * in the manner that follows:
+ *
+ *      "left" <-> "comparator" <-> "right"
+ * @parm: comp - comparator
+ * @parm: type - type of attribute to compare
+ * @parm: size - size of char/varchar types if > 0 o.w. -1
+ * @parm: left - left value of expression
+ * @parm: right - right value of expression
+ * @return: true if the expressions evaluates to true and
+            false if it evaluates to false.
+ */
+bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right ){
+    bool result = false;
+    switch( comp ){
+        case eq:
+            switch( type ){
+                case 0: // int
+                    result = (left.i == right.i);
+                    break;
+                case 1: // double
+                    result = (left.d == right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b == right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) == 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) == 0);
+                    break;
+            }
+            break;
+        case lt:
+            switch( type ){
+                case 0: // int
+                    result = (left.i < right.i);
+                    break;
+                case 1: // double
+                    result = (left.d < right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b < right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) < 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) < 0);
+                    break;
+            }
+            break;
+        case gt:
+            switch( type ){
+                case 0: // int
+                    result = (left.i > right.i);
+                    break;
+                case 1: // double
+                    result = (left.d > right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b > right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) > 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) > 0);
+                    break;
+            }
+            break;
+        case lte:
+            switch( type ){
+                case 0: // int
+                    result = (left.i <= right.i);
+                    break;
+                case 1: // double
+                    result = (left.d <= right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b <= right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) <= 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) <= 0);
+                    break;
+            }
+            break;
+        case gte:
+            switch( type ){
+                case 0: // int
+                    result = (left.i >= right.i);
+                    break;
+                case 1: // double
+                    result = (left.d >= right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b >= right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) >= 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) >= 0);
+                    break;
+            }
+            break;
+        case neq:
+            switch( type ){
+                case 0: // int
+                    result = (left.i != right.i);
+                    break;
+                case 1: // double
+                    result = (left.d != right.d);
+                    break;
+                case 2: // boolean
+                    result = (left.b != right.b);
+                    break;
+                case 3: // char
+                    result = (strncasecmp(left.c, right.c, size) != 0);
+                    break;
+                case 4: // varchar
+                    result = (strncasecmp(left.v, right.v, size) != 0);
+                    break;
+            }
+            break;
+    }
+    return result;
+}
+
 
 /*
  * 
  * @return 2d array result with success and
        NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* update ){}
+union record_item** execute_select( select_cmd* select, catalogs* shcemas ){}
 
 /*
  *
  */
-int execute_insert( update_cmd* update ){}
+int execute_insert( insert_cmd* insert, catalogs* schemas ){}
 
 /*
  *
  */
-int execute_update( update_cmd* update ){}
+int execute_update( update_cmd* update, catalogs* schemas ){}
 
 /*
  *
  */
-int execute_delete( delete_cmd* delete ){}
+int execute_delete( delete_cmd* delete, catalogs* schemas ){}
 
 // Helper Functions
-void set_condition_info( conditional_cmd* cond, int fTid, int oTid int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){
+void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){
     cond->first_table_id = fTid;
     cond->other_table_id = oTid;
     cond->attr_type = attrType;
@@ -351,6 +639,74 @@ void set_condition_info( conditional_cmd* cond, int fTid, int oTid int attrType,
     cond->other_attr = oAttr;
     cond->comparator = c;
     cond->value = v1;
+}
+
+/*
+ * Tokenize the attribute token based on '.' and assume
+ * the attribute name is in the last token.
+ * @return the name of the attribute in the token which the user
+           is responsible for freeing.
+ */
+char* get_attr_name_from_token( char* attr_token ){
+    int period_count = char_occur_count( attr_token, '.' );
+    char* temp = strdup( attr_token );
+    char* hold;
+    char* attr_name = NULL;
+    switch( period_count ){
+        case 0:
+            hold = strtok( temp, "." );
+            attr_name = (char *)malloc(strlen(hold)*sizeof(char));
+            strcpy( attr_name, hold );
+            break;
+        case 1:
+            strtok( temp, "." );
+            hold = strtok( NULL, "." );
+            attr_name = (char *)malloc(strlen(hold)*sizeof(char));
+            strcpy( attr_name, hold );
+            break;
+        default:
+            attr_name = NULL;
+            fprintf(stderr, "'%s' isn't a valid attribute token.\n", attr_token );
+    }
+    free( temp );
+    return attr_name;
+}
+
+/*
+ *
+ * Search through list of table ids for the provided attribute.
+ *
+ * @parm: table_ids - List of table schema ids to search through
+ * @parm: num_tables - Number of tables in the list
+ * @parm: par_tab_id - return parameter for table schema id where
+                       attribute was found
+ * @parm: attr_name - attribute name to search for
+ * @parm: schemas - List of Table Schema catalogs
+ * @return: attribute location if found in the list of table schema ids
+            if attribute not found then return -1 and print error.
+            if attribute found in multiple tables return -1 and print error.
+ */
+int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas ){
+    int found = -1;
+    int find_count = 0;
+    for( int i = 0; i<num_tables; i++ ){
+        int temp = -1;
+        table_catalog* tcat = &(schemas->all_tables[table_ids[i]]);
+        if( (temp = get_attr_loc( tcat, attr_name )) > 0 ){
+            find_count++;
+            found = temp;
+            *par_tab_id = temp;
+        }
+    }
+    if( found < 0 ){
+        fprintf(stderr, "None of the tables contain an attribute '%s'\n.", attr_name);
+        return -1;
+    }
+    if( find_count > 1 ){
+        fprintf(stderr, "Multiple tables have an attribute named '%s'\n.", attr_name);
+        return -1;
+    }
+    return found;
 }
 
 /*
@@ -388,7 +744,7 @@ comparators get_comparator( char* c ){
 bool is_attribute( char* check ){
     char first = check[0];
     char last = check[strlen(check)-1];
-    return ( is_number(check) || (first == '"' && last == '"') || strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0)
+    return ( is_number(check) || (first == '"' && last == '"') || strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0);
 }
 
 /*
@@ -400,14 +756,14 @@ bool is_attribute( char* check ){
  * Return type with success and -1 otherwise.
  */
 int get_value_type( char* value, int attr_type ){
-    char first = check[0];
-    char last = check[strlen(check)-1];
+    char first = value[0];
+    char last = value[strlen(value)-1];
     int val_type = -1;
     if( is_number(value) ){ // numeric value
         val_type = (attr_type == 0) ? 0 : (attr_type == 1) ? 1 : -1;
     }else if( (first == '"' && last == '"') ){ // string value
         val_type = (attr_type == 3) ? 3 : (attr_type == 4) ? 4 : -1;
-    }else if( strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0 ){ // boolean
+    }else if( strcasecmp("true",value) == 0 || strcasecmp("false",value) == 0 ){ // boolean
         val_type = 2;
     }
     return val_type;
@@ -419,9 +775,10 @@ int get_value_type( char* value, int attr_type ){
  * on the type fill the corresponding return parameter with
  * the associated value and return 1 for success.
  */
-int set_compare_value( char* value, int attr_id, int type, int table_id, union record_item* result, catalogs* schemas ){
+int set_compare_value( char* value, int type, union record_item* r_value ){
     bool null = (strcasecmp(value,"null") == 0);
     int val_type = -1;
+    int str_len = strlen(value);
     int result = 0;
     char *eptr;
     if( (val_type = get_value_type( value, type )) == -1 ){
@@ -430,35 +787,28 @@ int set_compare_value( char* value, int attr_id, int type, int table_id, union r
     }
     switch( type ){
         case 0: //int
-            if( null ){ record->i = INT_MAX; }
-            else{ record->i = atoi(value); }
+            if( null ){ r_value->i = INT_MAX; }
+            else{ r_value->i = atoi(value); }
             break;
         case 1: // double
-            if( null ){ record->d = INT_MAX; }
-            else{ record->d = strtod( value,&eptr ); }
+            if( null ){ r_value->d = INT_MAX; }
+            else{ r_value->d = strtod( value,&eptr ); }
             break;
         case 2: // boolean
-            if( null ){ record->b = INT_MAX; }
-            if(strcasecmp(value, "true") == 0){
-                record->b = true;
-            } else {
-                record->b = false;
-            }
+            if( null ){ r_value->b = INT_MAX; }
+            if(strcasecmp(value, "true") == 0){ r_value->b = true; }
+            else { r_value->b = false; }
             break;
         case 3: // char
-            if( null ){ memset(record->c, '\0', (str_len)*sizeof(char)); }
-            else if( str_len <= strlen(value) ){ // char default value is beyond size of char attribute
-                fprintf(stderr, "ERROR: '%s' default value is too large for the '%s' attribue.\n", value, attr_name);
-                result = -1;
-            }
-            else{ strcpy(record->c, value); }
+            if( null ){ memset(r_value->c, '\0', (str_len)*sizeof(char)); }
+            else{ strcpy(r_value->c, value); }
             break;
         case 4: // varchar
-            if( null ){ memset(record->v, '\0', (str_len)*sizeof(char)); }
-            else{ strcpy(record->v, value); }
+            if( null ){ memset(r_value->v, '\0', (str_len)*sizeof(char)); }
+            else{ strcpy(r_value->v, value); }
             break;
         default:
-            fprintf(stderr, "ERROR: unknown type for '%s'\n", attr_name);
+            fprintf(stderr, "ERROR: unknown type for '%s'\n", value);
             result = -1;
             break;
     }
@@ -471,12 +821,12 @@ int set_compare_value( char* value, int attr_id, int type, int table_id, union r
  * If they match return True o.w False.
  */
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas ){
-    int first_type = get_attr_type(schemas->all_tables[t_id], first);
+    int first_type = get_attr_type( &(schemas->all_tables[t_id]), first);
     int other_type = -1;
     if( multitable ){
-        other_type = get_attr_type(schemas->all_tables[ot_id], other);
+        other_type = get_attr_type( &(schemas->all_tables[ot_id]), other);
     }else{
-        other_type = get_attr_type(schemas->all_tables[t_id], other);
+        other_type = get_attr_type( &(schemas->all_tables[t_id]), other);
     }
     return (first_type == other_type) && (first_type >= 0) && (other_type >= 0);
 }
@@ -489,10 +839,10 @@ bool check_types( int t_id, int first, int other, bool multitable, int ot_id, ca
  * @return pointer to new where_cmd node.
  */
 where_cmd* new_where_node(){
-    where_cmd* node = (where_cmd*)malloc(sizeof(where_cmd));
-    node->link = NULL;
-    node->cond = NULL;
-    return node;
+  where_cmd* node = (where_cmd*)malloc(sizeof(where_cmd));
+  node->link = NULL;
+  node->cond = NULL;
+  return node;
 }
 
 /*
@@ -516,6 +866,13 @@ conditional_cmd* new_condition_cmd(){
 void destroy_where_node(where_cmd* node){
     free( node->cond );
     free( node );
+}
+
+void destroy_where_stack(where_cmd** node){
+    pop_where_node( node );
+    if( !where_is_empty(*node) ){
+        destroy_where_stack( node );
+    }
 }
 
 /*

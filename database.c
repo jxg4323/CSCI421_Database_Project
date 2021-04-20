@@ -321,12 +321,12 @@ int main(int argc, char *argv[])
 	conditional_cmd* first = new_condition_cmd();
 	conditional_cmd* secnd = new_condition_cmd();
 
-	first->first_attr = "x";
+	first->first_attr = 0;
 	first->comparator = gt;
-	first->val1.i = 0;
-	secnd->first_attr = "y";
+	first->value.i = 0;
+	secnd->first_attr = 1;
 	secnd->comparator = lt;
-	secnd->val1.i = 3;
+	secnd->value.i = 3;
 
 	push_where_node(&top, COND, first);
 	push_where_node(&top, AND, NULL);
@@ -817,4 +817,19 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, unio
     free(prim_indices);
     free(records);
     return 1;
+}
+
+// Helper Functions
+/*
+ * Count the number of occurences of the given character 
+ * @param c in the provided string and return the count.
+ * This function does NOT ignore case.
+ */
+int char_occur_count( char* str, char c ){
+    int str_len = strlen(str);
+    int occur = 0;
+    for( int i = 0; i < str_len; i++ ){
+        if( str[i] == c ){ occur++; } 
+    }
+    return occur;
 }

@@ -20,11 +20,10 @@ int parse_alter_statement( char * statement );
 int terminate_logs( char* db_loc );
 
 // Helper Functions
-int char_occur_count( char* str, char c );
 int terminate_logs( char* db_loc );
 void print_tokens( char** tokens, int count );
 void print_logs( );
 int read_logs( char* db_loc );
-catalog* get_schemas( );
+catalogs* get_schemas( );
 
 #endif
