@@ -234,6 +234,9 @@ union record_item** cartesian_product( int num_tables, int* table_ids, catalogs*
       -1 otherwirse.
  */
 int check_where_statement( where_cmd* where, union record_item* record, int record_size, catalogs* schemas ){
+    if( where == NULL ){ // if no where conditions then all records pass.
+        return 0;
+    }
     // What to do about multiple tables??
     // Assume only one table involved in query
     int table_id = where->cond->first_table_id;
@@ -265,6 +268,249 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
         temp = temp->link;
     }
     return (result_val) ? 0 : -1;
+}
+
+/*
+ * 
+ * @return 2d array result with success and
+       NULL otherwise and print error statement
+ */
+union record_item** execute_select( select_cmd* select, catalogs* shcemas ){}
+
+/*
+ * Insert the records in the command structure into the
+ * designated table and if any errors occur on insert then
+ * back track the insert by removing all of the records that
+ * were inserted before the error.
+ * 
+ * @return 0 with success and -1 otherwise,
+ */
+int execute_insert( insert_cmd* insert, catalogs* schemas ){
+    int result = 0;
+    for( int i = 0; i<insert->num_records; i++ ){
+        result = insert_record( insert->table_id, records[i] );
+        if( result < 0 ){ 
+            backtrack_insert( i,insert );
+            break; 
+        }
+    }
+    return result;
+}
+
+/*
+ * Execute the update command based on the structure given,
+ * loop through each record in the table to be updated and 
+ * execute the set operations on the records that match the
+ * where conditions.
+ *
+ * @return: 0 with success and -1 for failure.
+ */
+int execute_update( update_cmd* update, catalogs* schemas ){
+    int result = 0;
+    int record_size = schemas->all_tables[update->table_id].attribute_count;
+    int num_records = 0;
+    union record_item** all_records;
+    table_catalog* tcat = &(schemas->all_tables[update->table_id]);
+    if( (num_records = get_records( update->table_id,&all_records )) < 0 ){ return -1; }
+    for( int i = 0; i<num_records; i++ ){
+        union record_item* record = all_records[i];
+        if( check_where_statement( update->conditions, record, record_size, schemas ) ){
+            // loop through each set operation and alter the record
+            for(int j = 0; j<update->num_attributes; j++){
+                set* setter = &(update->set_attrs[j]);
+                if( setter->math_op ){
+                    union record_item n_val;
+                    int lsize = 0, rsize = 0;
+                    if( setter->use_left_attr && setter->use_right_attr ){  // both variables used are attributes
+                        lsize = (tcat->attributes[setter->left_attr].char_length > 0) ? tcat->attributes[setter->left_attr].char_length : 0;
+                        rsize = (tcat->attributes[setter->right_attr].char_length > 0) ? tcat->attributes[setter->right_attr].char_length : 0;
+                        if( exec_math_op( &n_val, record[setter->left_attr], record[setter->right_attr], setter->operation, setter->type, lsize, rsize ) < 0 ){ return -1; }
+                        
+                    }else if( setter->use_left_attr && setter->right_val_set ){ // attribute + value
+                        lsize = (tcat->attributes[setter->left_attr].char_length > 0) ? tcat->attributes[setter->left_attr].char_length : 0;
+                        rsize = strlen(setter->new_right_value.c);
+                        if( exec_math_op( &n_val, record[setter->left_attr], new_right_value, setter->operation, setter->type, lsize, rsize ) < 0 ){ return -1; }
+                        
+                    }else if( setter->left_val_set && setter->user_right_attr ){ // value + attribute
+                        lsize = strlen(setter->new_left_value.c);
+                        rsize = (tcat->attributes[setter->right_attr].char_length > 0) ? tcat->attributes[setter->right_attr].char_length : 0;
+                        if( exec_math_op( &n_val, setter->new_left_value, record[setter->right_attr], setter->operation, setter->type, lsize, rsize) < 0){ return -1; }
+                        
+                    }else if( setter->left_val_set && setter->right_val_set ){  // value + value
+                        lsize = strlen(setter->new_left_value.c);
+                        rsize = strlen(setter->new_right_value.c);
+                        if( exec_math_op( &n_val, setter->new_left_value, setter->new_right_value, setter->operation, setter->type, lsize, rsize) < 0){ return -1; }
+                    }
+                    // change record
+                    record[setter->equated_attr] = n_val;
+                }else{  // NO math operation involved in set
+                    if( setter->user_left_attr ){ // only left attribute
+                        change_record_val( &(record[setter->equated_attr]), record[setter->left_attr], setter->type );
+                    }else if( setter->use_right_attr ){ // only right attribute
+                        change_record_val( &(record[setter->equated_attr]),record[setter->right_attr], setter->type );
+                    }else if( setter->left_val_set ){ // only left value
+                        change_record_val( &(record[setter->equated_attr]), setter->new_left_value, setter->type );
+                    }else if( setter->right_val_set ){ // only right value
+                        change_record_val( &(record[setter->equated_attr]), setter->new_right_value, setter->type );
+                    }
+                }
+            }
+            // update the altered record
+            if( (result = update_record(tcat->storage_manager_loc,record)) < 0 ){ return -1; }  
+        }
+    }
+}
+
+/*
+ * Get all the records for the table in the delete command
+ * structure and if the record matches the where clause then
+ * remove the record.
+ *
+ * @return 0 with success and -1 otherwise.
+ */
+int execute_delete( delete_cmd* delete, catalogs* schemas ){
+    int result = 0;
+    int record_size = schemas->all_tables[delete->table_id].attribute_count;
+    int num_records = 0;
+    union record_item** all_records;
+    if( (num_records = get_records( delete->table_id,&all_records )) < 0 ){ return -1; }
+    for( int i = 0; i<num_records; i++ ){
+        if( check_where_statement( delete->conditions, all_records[i], record_size, schemas ) ){
+            result = remove_record( delete->table_id,all_records[i] );
+        }
+        if( result < 0 ){ break; }
+    }
+    free( all_records );
+    return result;
+}
+
+// Helper Functions
+void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){
+    cond->first_table_id = fTid;
+    cond->other_table_id = oTid;
+    cond->attr_type = attrType;
+    cond->first_attr = fAttr;
+    cond->other_attr = oAttr;
+    cond->comparator = c;
+    cond->value = v1;
+}
+
+/*
+ * Remove the records that were inserted in the insert
+ * command structure before an error.
+ */
+void backtrack_insert( int rec_count, insert_cmd* insert ){
+    for( int i = 0; i < rec_count; i++ ){
+        remove_record( insert->table_id, insert->records[i] );
+    }
+}
+
+/*
+ * Change the old value to the new value based on the type.
+ * @return 0 with success and -1 with failure.
+ */
+int change_record_val( union record_item* old_val, union record_item new_val, int type ){
+    switch( type ){
+        case 0: // int
+            old_val->i = new_val.i;
+            break;
+        case 1: // double
+            old_val->d = new_val.d;
+            break;
+        case 2: // boolean
+            old_val->b = new_val.b;
+            break;
+        case 3: // char
+            strcpy(old_val->c, new_val.c);
+            break;
+        case 4: // varchar
+            strcpy(old_val->v, new_val.v);
+            break;
+    }
+    return 0;
+}
+
+/*
+ * Execute the provided math operation and return the result.
+ * If the types are char/varchar then the sizes are used to 
+ * create a new string.
+ *
+ * @return 0 with success and -1 o.w.
+ */
+int exec_math_op( union record_item* result, union record_item left, union record_item right, math_operations op, int type, int lsize, int rsize ){
+    char* concat = (char *)malloc((lsize+rsize+1)*sizeof(char));
+    memset(concat, '\0', (lsize+rsize+1)*sizeof(char));
+    switch( op ){
+        case plus:
+            switch( type ){
+                case 0: // int
+                    result->i = left.i + right.i;
+                    break;
+                case 1: // double
+                    result->d = left.d + right.d;
+                    break;
+                case 2: // boolean
+                    result->b = left.b + right.b;
+                    break;
+                case 3: // char
+                    strncat(concat, left.c, lsize);
+                    strncat(concat, right.c, rsize);
+                    strcpy(result->c, concat);
+                    break;
+                case 4: // varchar
+                    strncat(concat, left.v, lsize);
+                    strncat(concat, right.v, rsize);
+                    strcpy(result->v, concat);
+                    break;
+            }
+            break;
+        case minus:
+            // char and var char types not allowed for this operation
+            switch( type ){
+                case 0: // int
+                    result->i = left.i - right.i;
+                    break;
+                case 1: // double
+                    result->d = left.d - right.d;
+                    break;
+                case 2: // boolean
+                    result->b = left.b - right.b;
+                    break;
+            }
+            break;
+        case multiply:
+            // char and var char types not allowed for this operation
+            switch( type ){
+                case 0: // int
+                    result->i = left.i * right.i;
+                    break;
+                case 1: // double
+                    result->d = (double)left.d * (double)right.d;
+                    break;
+            }
+            break;
+        case divide:
+            // char and var char types not allowed for this operation
+            switch( type ){
+                case 0: // int
+                    if( right.i == 0 ){
+                        fprintf(stderr, "Floating point exception. Attempted division by zero\n");
+                        return -1;
+                    }
+                    result->i = left.i / right.i;
+                    break;
+                case 1: // double
+                    if( right.d == 0 ){
+                        fprintf(stderr, "Floating point exception. Attempted division by zero\n");
+                        return -1;
+                    }
+                    result->d = (double)left.d / (double)right.d;
+                    break;
+            }
+            break;
+    }
+    free( concat );
+    return 0;
 }
 
 /*
@@ -416,40 +662,6 @@ bool compare_condition( comparators comp, int type, int size, union record_item 
             break;
     }
     return result;
-}
-
-
-/*
- * 
- * @return 2d array result with success and
-       NULL otherwise and print error statement
- */
-union record_item** execute_select( select_cmd* select, catalogs* shcemas ){}
-
-/*
- *
- */
-int execute_insert( insert_cmd* insert, catalogs* schemas ){}
-
-/*
- *
- */
-int execute_update( update_cmd* update, catalogs* schemas ){}
-
-/*
- *
- */
-int execute_delete( delete_cmd* delete, catalogs* schemas ){}
-
-// Helper Functions
-void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 ){
-    cond->first_table_id = fTid;
-    cond->other_table_id = oTid;
-    cond->attr_type = attrType;
-    cond->first_attr = fAttr;
-    cond->other_attr = oAttr;
-    cond->comparator = c;
-    cond->value = v1;
 }
 
 /*

@@ -30,9 +30,10 @@ typedef enum {plus, minus, multiply, divide} math_operations;
  */
 typedef enum {AND, OR, COND} where_node_type;
 
-// Hold conditional statement, if attr is NULL ignore
-// if attr isn't null then value for it is place in corresponding valNUM
-// if both attr's are null then compare vals
+/* Hold conditional statement, if attr is NULL ignore
+ * if attr isn't null then value for it is place in corresponding valNUM
+ * if both attr's are null then compare vals
+ */
 typedef struct conditional_cmd_struct{
 	int first_table_id;
 	int other_table_id;
@@ -44,12 +45,23 @@ typedef struct conditional_cmd_struct{
 	bool result_value;  // TODO: consider adding a bool value "use_value"
 } conditional_cmd;
 
+/*
+ * If the left or right attribute values are the same sa the equated attribute set
+ * that value for the left or right int.
+ *
+ */
 typedef struct set_attr{
-	char* attribute;
+	int equated_attr; 
+	int left_attr;
+	int right_attr;
 	int type;
 	bool math_op; // True: execute operation on data
+	bool use_left_attr; // True: use left side attribute in operation
+	bool use_right_attr; // True: use right side attribute in operation 
+	bool left_val_set; // True: new_left_value was set
+	bool right_val_set; // True: new_right_value was set
 	math_operations operation; // '+', '-', '*', '/'
-	char* new_value;
+	union record_item new_left_value, new_right_value;
 } set;
 
 typedef struct where_node{
@@ -212,6 +224,9 @@ int execute_delete( delete_cmd* delete, catalogs* schemas );
 void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 );
 comparators get_comparator( char* c );
 bool is_attribute( char* check );
+void backtrack_insert( int rec_count, insert_cmd* insert );
+int change_record_val( union record_item* old_val, union record_item new_val, int type );
+int exec_math_op( union record_item* result, union record_item left, union record_item right, math_operations op, int type, int lsize, int rsize);
 char* get_attr_name_from_token( char* attr_token );
 int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas );
 bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right );
