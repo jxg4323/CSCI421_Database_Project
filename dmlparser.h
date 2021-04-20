@@ -44,12 +44,39 @@ typedef struct conditional_cmd_struct{
 	bool result_value;
 } conditional_cmd;
 
-typedef struct set_attr{
+/*typedef struct set_attr{
 	char* attribute;
 	int type;
 	bool math_op; // True: execute operation on data
 	math_operations operation; // '+', '-', '*', '/'
 	char* new_value;
+	int operand_type;
+	char* operand;
+
+} set;*/
+
+/*
+ * If the left or right attribute values are the same sa the equated attribute set
+ * that value for the left or right int.
+ *
+ * Set: equated_attr = left_attr <math_op> right_attr  -->  math_op = True, use_left = True, use_right = True
+ * Set: equated_attr = left_attr <math_op> new_value   -->  math_op = True, use_left = True, use_right = False
+ * Set: equated_attr = new_value <math_op> right_attr  -->  math_op = True, use_left = False, use_right = True
+ * Set: equated_attr = left_attr  					   -->  math_op = False, use_left = True, use_right = False
+ * Set: equated_attr = right_attr  					   -->  math_op = False, use_left = False, use_right = True
+ * math_op = True, use_left = False, use_right = False (NOT possible would be error)
+ * math_op = False, use_left = True, use_right = True (NOT possible would be error)
+ */
+typedef struct set_attr{
+	int equated_attr;
+	int left_attribute;
+	int right_attr;
+	int type;
+	bool math_op; // True: execute operation on data
+	bool use_left; // True: use value of this attribute in operation
+	bool use_right; // True: use value of other attribute
+	math_operations operation; // '+', '-', '*', '/'
+	union record_item new_value;
 } set;
 
 typedef struct where_node{
