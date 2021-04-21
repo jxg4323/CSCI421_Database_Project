@@ -261,7 +261,3 @@ void print_tokens( char** tokens, int count ){
     }
     printf("}\n");
 }
-
-catalogs* get_schemas( ){
-    return logs;
-}

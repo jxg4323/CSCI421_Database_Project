@@ -45,16 +45,18 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     int from_idx = -1;
     int where_idx = -1;
     int orderby_idx = -1;
+    // get indices of separator tokens
     for(int i = 1; i < token_count; i++){
         if(strcmp(tokens[token_count], "from") == 0 && from_idx == -1){ from_idx = i; }
         else if(strcmp(tokens[token_count], "where") == 0 && where_idx == -1){ where_idx = i; }
         else if(strcmp(tokens[token_count], "orderby") == 0 && orderby_idx == -1){ orderby_idx = i; }
     }
-    if(from_idx == -1 || where idx == -1 ){ return NULL; }
+    if(from_idx == -1 || where_idx == -1 ){ return NULL; }
     int num_attrs_to_select = from_idx -1;
     int num_tables_to_select = (where_idx - from_idx) - 1;
     table_catalog** tables_to_select = malloc(sizeof(table_catalog*) * num_tables_to_select);
     char** tab_names = malloc(sizeof(char*) * num_tables_to_select);
+    // get the tables being selected from
     for(int i = 0; i < num_tables_to_select; i++){
         tables_to_select[i] = get_catalog_p(schemas, tokens[i+from_idx+1]);
         if(tables_to_select[i] == NULL) {
@@ -69,19 +71,21 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     char** attrs_to_select = malloc(sizeof(char*) * num_attrs_to_select);
     int current_attr = 0;
     bool wildcard = false;
+    // determine if wildcard is used
     if(from_idx == 2 && strcmp(tokens[1], "*") ==0){
         wildcard = true;
     }
+    // loop through attributes to select from the tables
     while(current_token < from_idx && isValid == true && wildcard == false){
         char** names;
         int names_count = get_names_from_token(tokens[current_token], &names);
         if(names_count < 1){ isValid = false; }
         else{
-            if(names_count == 1){
+            if(names_count == 1){ // only attribute name is given
                 int tab_idx;
                 int attr_loc = find_attribute_new(tables_to_select, num_tables_to_select, &tab_idx, names[0]);
                 if(attr_loc < 0 ){ isValid = false; } else { attrs_to_select[current_attr] = tokens[current_token]; }
-            } else {
+            } else { // table and attribute name given
                 int tab_idx = -1;
                 for(int i = 0; i < num_tables_to_select; i++){
                     if(strcmp(names[0], tables_to_select[i]->table_name) == 0 ){
@@ -111,13 +115,14 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     int where_token_count;
     bool where_set = true;
     if(orderby_idx < 0 ){ where_token_count = (token_count - where_idx) + 1; } else { where_token_count = orderby_idx - where_idx; }
-    where_cmd* where = build_where(tab_names, num_tables_to_select, where_idx, tokens + (where_id*sizeof(char*)), schemas);
+    where_cmd* where = build_where(tab_names, num_tables_to_select, where_idx, tokens + (where_idx*sizeof(char*)), schemas);
     if(where == NULL){
         where_set = false;
         isValid = false;
     }
     char** orderby_array = NULL;
     bool orderby_array_set = false;
+    // build the orderby array
     if(isValid == true && orderby_idx >= 0){
         orderby_array_set = true;
         orderby_array = malloc(sizeof(char*) * ((token_count-orderby_idx)-1));
@@ -127,7 +132,7 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
             for(int j = 0; j < num_attrs_to_select; j++){
                 if(strcmp(tokens[current_token], attrs_to_select[j])){
                     occurs = true;
-                    orderby_array[i] = tokens[current_token]
+                    orderby_array[i] = tokens[current_token];
                 }
             }
             current_token++;
@@ -171,92 +176,97 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     return command;
 }
 
-int build_set( int token_count, char** tokens, table_catalog* table, set *** set_array){
+int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array){
     int set_count = 0;
     int current_token = 0;
     int attr_type = -1;
-    (*set_array) = malloc(sizeof(set *));
+    (*set_array) = malloc(sizeof(set));
     bool isValid = true;
+    // loop through each attribute set command
     while( current_token < token_count && isValid == true ){
         set_count++;
-        if( set_count > 1){ (*set_array) = realloc(sizeof((set *) * set_count)); }
-        (*set_array)[set_count-1] = malloc(sizeof(set));
+        if( set_count > 1){ realloc((*set_array), sizeof(set) * set_count); }
+        // get info on equated_attr
         int attr_loc = get_attr_loc(table, tokens[current_token]);
         if(attr_loc == -1 ){ isValid = false; } else {
-            (*set_array)[set_count-1]->attribute = attr_loc;
+            (*set_array)[set_count-1].equated_attr = attr_loc;
             current_token++;
             if(strcmp(tokens[current_token],"=") != 0){isValid = false;}
             else {current_token++;}
         }
         if(isValid == true) {
-            if(is_attribute(tokens[current_token]) = true){
+            // get info on left_value / left_attribute
+            if(is_attribute(tokens[current_token]) == true){
                 attr_type = get_value_type(tokens[current_token], table->attributes[attr_loc].type);
             } else { attr_type = -1; }
             if(attr_type == table->attributes[attr_loc].type) {
-                (*set_array)[set_count - 1]->type = attr_type;
+                (*set_array)[set_count - 1].type = attr_type;
                 union record_item left_item;
-                switch (attr_type){
-                case 0: // int
-                    left_item.i = atoi(tokens[current_token]);
-                case 1: // double
-                    left_item.d = atof(tokens[current_token]);
-                case 2: // bool
-                    if (strcmp("true", tokens[current_token]) == 0) {
-                        left_item.b = true;
-                    } else if (strcmp("false", tokens[current_token]) == 0) {
-                        left_item.b = false;
-                    } else {
-                        isValid = false;
-                    }
-                case 3: // char
-                    int len = table->attributes[current_attr].char_length;
-                if (len > strlen(tokens[current_token])) {
-                    isValid = false;
-                } else {
-                    left_item.c = tokens[current_token];
+                int len;
+                switch (attr_type) {
+                    case 0: // int
+                        left_item.i = atoi(tokens[current_token]);
+                    case 1: // double
+                        left_item.d = atof(tokens[current_token]);
+                    case 2: // bool
+                        if (strcmp("true", tokens[current_token]) == 0) {
+                            left_item.b = true;
+                        } else if (strcmp("false", tokens[current_token]) == 0) {
+                            left_item.b = false;
+                        } else {
+                            isValid = false;
+                        }
+                    case 3: // char
+                        len = table->attributes[attr_loc].char_length;
+                        if (len > strlen(tokens[current_token])) {
+                            isValid = false;
+                        } else {
+                            strcpy(left_item.c, tokens[current_token]);
+                        }
+                    case 4: // varchar
+                        strcpy(left_item.v, tokens[current_token]);
                 }
-                case 4: // varchar
-                    left_item.v = tokens[current_token];
-                }
-                (*set_array)[set_count-1]->new_value_left = left_item;
-                (*set_array)[set_count-1]->left_val_set = true;
-                (*set_array)[set_count-1]->use_left_attr = false;
+                (*set_array)[set_count-1].new_left_value = left_item;
+                (*set_array)[set_count-1].left_val_set = true;
+                (*set_array)[set_count-1].use_left_attr = false;
                 current_token++;
             } else {
                 int left_attr_loc = get_attr_loc(table, tokens[current_token]);
                 if(left_attr_loc < 0) {
                     isValid = false;
                 } else {
-                    (*set_array)[set_count-1]->left_attr = left_attr_loc;
-                    (*set_array)[set_count-1]->left_val_set = false;
-                    (*set_array)[set_count-1]->use_left_attr = true;
+                    (*set_array)[set_count-1].left_attr = left_attr_loc;
+                    (*set_array)[set_count-1].left_val_set = false;
+                    (*set_array)[set_count-1].use_left_attr = true;
                     current_token++;
                 }
             }
         }
         if(isValid == true && strcmp(tokens[current_token],"") != 0){
+            // determine if this set uses an operation
             if(attr_type != 0 && attr_type != 1){ isValid = false; }
             else{
-                (*set_array)[set_count-1]->math_op = true;
+                (*set_array)[set_count-1].math_op = true;
                 if(strcmp(tokens[current_token],"+") == 0){
-                    (*set_array)[set_count-1]->operation = plus;
+                    (*set_array)[set_count-1].operation = plus;
                 } else if(strcmp(tokens[current_token],"-") == 0){
-                    (*set_array)[set_count-1]->operation = minus;
+                    (*set_array)[set_count-1].operation = minus;
                 } else if(strcmp(tokens[current_token],"*") == 0){
-                    (*set_array)[set_count-1]->operation = multiply;
+                    (*set_array)[set_count-1].operation = multiply;
                 } else if(strcmp(tokens[current_token],"/") == 0){
-                    (*set_array)[set_count-1]->operation = divide;
+                    (*set_array)[set_count-1].operation = divide;
                 } else { isValid = false; }
             }
             current_token++;
             if(isValid == true){
-                if(is_attribute(tokens[current_token]) = true){
+                if(is_attribute(tokens[current_token]) == true){
                     attr_type = get_value_type(tokens[current_token], table->attributes[attr_loc].type);
                 } else { attr_type = -1; }
+                // get info on the right_value / right_attribute
                 int right_attr_loc = get_attr_loc(table, tokens[token_count]);
                 if(attr_type == table->attributes[attr_loc].type) {
-                    (*set_array)[set_count - 1]->type = attr_type;
                     union record_item right_item;
+                    int len;
                     switch (attr_type){
                         case 0: // int
                             right_item.i = atoi(tokens[current_token]);
@@ -271,27 +281,27 @@ int build_set( int token_count, char** tokens, table_catalog* table, set *** set
                                 isValid = false;
                             }
                         case 3: // char
-                            int len = table->attributes[current_attr].char_length;
+                            len = table->attributes[right_attr_loc].char_length;
                             if (len > strlen(tokens[current_token])) {
                                 isValid = false;
                             } else {
-                                right_item.c = tokens[current_token];
+                                strcpy(right_item.c, tokens[current_token]);
                             }
                         case 4: // varchar
-                            right_item.v = tokens[current_token];
+                            strcpy(right_item.v, tokens[current_token]);
                     }
-                    (*set_array)[set_count-1]->new_right_value = right_item;
-                    (*set_array)[set_count-1]->right_val_set = true;
-                    (*set_array)[set_count-1]->use_right_attr = false;
+                    (*set_array)[set_count-1].new_right_value = right_item;
+                    (*set_array)[set_count-1].right_val_set = true;
+                    (*set_array)[set_count-1].use_right_attr = false;
                     current_token++;
                 } else {
                     int right_attr_loc = get_attr_loc(table, tokens[current_token]);
                     if(right_attr_loc < 0) {
                         isValid = false;
                     } else {
-                        (*set_array)[set_count-1]->right_attr = right_attr_loc;
-                        (*set_array)[set_count-1]->right_val_set = false;
-                        (*set_array)[set_count-1]->use_right_attr = true;
+                        (*set_array)[set_count-1].right_attr = right_attr_loc;
+                        (*set_array)[set_count-1].right_val_set = false;
+                        (*set_array)[set_count-1].use_right_attr = true;
                         current_token++;
                     }
                 }
@@ -304,9 +314,6 @@ int build_set( int token_count, char** tokens, table_catalog* table, set *** set
         }
     }
     if(isValid == false){
-        for(int i = 0; i < set_count; i ++){
-            free((*set_array)[i]);
-        }
         free(*set_array);
         return 0;
     } else {
@@ -327,7 +334,7 @@ int build_set( int token_count, char** tokens, table_catalog* table, set *** set
       if no errors were encountered, o.w. return NULL
  */
 update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
-    if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[2],"set") !=0){ return null; }
+    if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[2],"set") !=0){ return NULL; }
     int current_token = 3;
     int where_idx = -1;
     while(current_token < token_count && where_idx == -1){
@@ -338,16 +345,18 @@ update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
     }
     table_catalog* table = get_catalog_p(schemas, tokens[2]);
     if( table == NULL ){ return NULL; }
-    set ** set_part;
+    set * set_part;
     int num_attr = build_set(where_idx - 2, tokens + (2* sizeof(char *)), table, &set_part);
     if(num_attr == 0){ return NULL; }
     where_cmd * where = NULL;
     if( where_idx != -1 ){
-        where = build_where(table->id, false, token_count-where_idx, tokens + (where_idx * sizeof(char *)));
+        char ** table_name = malloc(sizeof(char*));
+        table_name[0] = table->table_name;
+        where = build_where(table_name, 1, token_count-where_idx, tokens + (where_idx * sizeof(char *)), schemas);
     }
     char ** attributes_to_update = malloc(sizeof(char *) * num_attr);
     for(int i = 0; i < num_attr; i++){
-        attributes_to_update[i] = set_part[i].attribute;
+        attributes_to_update[i] = get_attr_name(schemas, table->table_name, set_part[i].equated_attr);
     }
     update_cmd * command = malloc(sizeof(update_cmd));
     command->table_id = table->id;
@@ -372,14 +381,16 @@ update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
       if no errors were encountered, o.w. return NULL
  */
 delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){
-    if(token_count < 4){ return null; }
+    if(token_count < 4){ return NULL; }
     if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[1],"from") !=0
-        || strcmp(tokens[3],"where") !=0){ return null; }
+        || strcmp(tokens[3],"where") !=0){ return NULL; }
     table_catalog* table = get_catalog_p(schemas, tokens[2]);
     if( table == NULL ){ return NULL; }
-    where_cmd where = build_where(table->id, true, token_count - 3, tokens + ((sizeof char *) * 3));
-    if( where == NULL ){ return NULL}
-    delete_cmd * command = malloc(sizeof command);
+    char ** table_name = malloc(sizeof(char*));
+    table_name[0] = table->table_name;
+    where_cmd* where = build_where(table_name, 1, token_count - 3, tokens + ((sizeof(char *) * 3)), schemas);
+    if( where == NULL ){ return NULL; }
+    delete_cmd * command = malloc(sizeof(command));
     command->table_id = table->id;
     command->conditions = where;
     return command;
@@ -401,11 +412,11 @@ delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){
       if no errors were encountered, o.w. return NULL
  */
 insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
-    if(token_count < 6){ return null; }
+    if(token_count < 6){ return NULL; }
     if( strcmp(tokens[0],"insert") != 0 || strcmp(tokens[1],"into") !=0
-        || strcmp(tokens[3],"values") !=0){ return null; }
+        || strcmp(tokens[3],"values") !=0){ return NULL; }
     table_catalog* table = get_catalog_p(schemas, tokens[2]);
-    if( table == NULL ){ return null; }
+    if( table == NULL ){ return NULL; }
     bool isValid = true;
     int current_token = 4;
     int current_record = 0;
@@ -418,12 +429,14 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
         records[i] = malloc(sizeof(union record_item) * attr_count);
     }
     int attr_type;
+    // loop through each inserting record and build it
     while(current_token < token_count && current_record < num_records && isValid == true){
         current_attr = 0;
         while(current_attr < attr_count && isValid == true){
             union record_item item;
             attr_type = table->attributes[current_attr].type;
             if(attr_type != is_attribute(tokens[current_token])){
+                // set attributes in the record to null until a matching type is found
                 switch (attr_type) {
                     case 0: // int
                         item.i = INT_MAX;
@@ -438,7 +451,9 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
                 }
             }
             else {
-                switch (type) {
+                // if match is found insert the given value into the current attribute for the record
+                int len;
+                switch (attr_type) {
                     case 0: // int
                         item.i = atoi(tokens[current_token]);
                     case 1: // double
@@ -452,18 +467,19 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
                             isValid = false;
                         }
                     case 3: // char
-                        int len = table->attributes[current_attr].char_length;
+                        len = table->attributes[current_attr].char_length;
                         if (len > strlen(tokens[current_token])) {
                             isValid = false;
                         } else {
-                            item.c = tokens[current_token];
+                            strcpy(item.c, tokens[current_token]);
                         }
                     case 4: // varchar
-                        item.v = tokens[current_token];
+                        strcpy(item.v, tokens[current_token]);
                 }
                 current_token++;
             }
             if(isValid == true){
+                // add record to array of records
                 records[current_record][current_attr] = item;
             }
             current_attr++;
@@ -479,6 +495,7 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
         while(current_attr < attr_count){
             union record_item item;
             attr_type = table->attributes[current_attr].type;
+            // set remaining attributes in the final record to null
             switch (attr_type) {
                 case 0: // int
                     item.i = INT_MAX;
@@ -927,7 +944,7 @@ int get_names_from_token( char* attr_token, char*** return_array ){
             array_size = 1;
             break;
         case 1:
-            hold1 strtok( temp, "." );
+            hold1 = strtok( temp, "." );
             hold2 = strtok( NULL, "." );
             (*return_array) = malloc(sizeof(char*) * 2);
             (*return_array)[0] = malloc(strlen(hold1)*sizeof(char));
