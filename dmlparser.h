@@ -223,6 +223,7 @@ int execute_delete( delete_cmd* delete, catalogs* schemas );
 // Helper Functions  --> GOOD
 void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 );
 comparators get_comparator( char* c );
+int parser( char* statement, char** data );
 bool is_attribute( char* check );
 void backtrack_insert( int rec_count, insert_cmd* insert );
 int change_record_val( union record_item* old_val, union record_item new_val, int type );

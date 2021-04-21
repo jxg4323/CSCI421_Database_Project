@@ -29,7 +29,7 @@ int execute_non_query(char * statement){
 		token = strtok(NULL, delimit);
 		if(strncasecmp(token, "table", 5) == 0){
 			int result = parse_ddl_statement(statement);
-			if(result == 0){
+			if(result >= 0){
 				printf("SUCCESS\n");
 			}else{
 				fprintf(stderr,"ERROR\n");
@@ -37,17 +37,14 @@ int execute_non_query(char * statement){
 			free( newStr );
 			return 0;
 		}else{
-			fprintf(stderr, "ERROR: BAD QUERY. \n");
+			fprintf(stderr, "ERROR: '%s' doesn't match 'table'. \n", token);
 			free( newStr );
 			return -1;
-			//bad query.
 		}
 	}else{
-		// TODO: IMPLEMENT DML PARSER CALL (insert, update, delete)
-		fprintf(stderr,"ERROR: either bad query or query was meant for the DML parser.\n");
+		fprintf(stderr,"ERROR: bad query.\n");
 		free( newStr );
 		return -1;
-		//either dml or bad query
 	}
 	return 0;
 }
@@ -66,8 +63,23 @@ int execute_non_query(char * statement){
 int execute_query(char * query, union record_item *** result){
 	// This function will be used when executing database queries that return tables of data.
 	// It is just stubbed out for now.
+	int result = 0;
 	catalogs* schemas = get_schemas(); // used to pass table info to dmlparser
-	return 0;
+
+	char *newStr = (char *)malloc((strlen(query)+1)*sizeof(char));
+	memset( newStr, '\0', (strlen(query)+1)*sizeof(char));
+	strcpy(newStr, query);
+
+	char delimit[] = " \t\r\n\0";
+	char *token = strtok(newStr, delimit);
+
+	if( strcasecmp(token, "select") == 0 ){
+		result = parse_dml_query( query, result, schemas );
+	}else{
+		result = parse_dml_statement( query, schemas );
+	}
+
+	return result;
 }
 
 /*
@@ -282,16 +294,21 @@ int run(int argc, char *argv[]){
 		// View All Current Table Schemas in Volatile Memory
 		if( strcasecmp(token, "print") == 0){
 			printf("Current status of all Table Schemas in memory\n");
-			free( tokenString );
 			print_logs( );
 		}else if((quit = strcasecmp(token, "quit")) == 0){
 			printf("EXITING PROGRAM....\n");
 			free( tokenString );
             break;
-		}else{ // TODO: maybe have token check for insert, update, delete
+		}else if(strcasecmp(token, "create") == 0 || strcasecmp(token, "alter") == 0 || strcasecmp(token, "drop") == 0 ){ 
 			execute_non_query(input);
-			free( tokenString );
+		}else if(strcasecmp(token, "select") == 0 || strcasecmp(token, "insert") == 0 || strcasecmp(token, "update") == 0 || strcasecmp(token, "delete") == 0 ){
+			union record_item** query_res;
+			execute_query( input, &query_res );
+			free( query_res );
+		}else{
+			fprintf(stderr, "'%s' was not a recognized command.\n", token);
 		}
+		free( tokenString );
 		printf("Enter SQL query: ");
 	}
 	free(input);
@@ -347,7 +364,8 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-/*
+// DDL_Parser Functions --> TODO: move to ddl_parser.c
+/* 
  * Loop through the provided tokens, and create the table catalog
  * and initialize the table metadata for the storagemanager.
  * @param cat - array of table_catalog structures
@@ -743,7 +761,7 @@ int drop_attribute(catalogs *cat, char *table, char *attribute){
     free(data_types);
     free(prim_indices);
     free(records);
-    return 1;
+    return 0;
 }
 
 /* 
@@ -816,7 +834,7 @@ int add_attribute_table(catalogs *cat, char *table, char *name, char *type, unio
     free(data_types);
     free(prim_indices);
     free(records);
-    return 1;
+    return 0;
 }
 
 // Helper Functions

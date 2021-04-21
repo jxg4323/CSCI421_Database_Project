@@ -105,7 +105,7 @@ int parse_create_statement( char * statement ){
         fprintf( stderr, "ERROR: statement '%s' doesn't contain enough information to create a new table.\n", statement);
         res = -1;
     }else{
-        create_table( logs, total, data );
+        res = create_table( logs, total, data );
     }
 
 
@@ -114,7 +114,7 @@ int parse_create_statement( char * statement ){
     }
     free( data );
     free( temp );
-    return res;
+    return (res >= 0 ) ? 0 : -1;
 }
 
 /*
@@ -154,7 +154,7 @@ int parse_drop_statement( char * statement ){
 
     free( name );
     free( temp );
-    return (drop_result == 1) ? 0 : -1; 
+    return (drop_result >= 0) ? 0 : -1; 
 }
 
 /*
@@ -213,7 +213,7 @@ int parse_alter_statement( char * statement ){
     free( data );
     free( temp );
 
-    return (alt_res == 1) ? 0 : -1;
+    return (alt_res >= 0) ? 0 : -1;
 }
 
 /*

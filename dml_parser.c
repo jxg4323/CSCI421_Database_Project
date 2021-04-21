@@ -1,6 +1,35 @@
 #include "dml_parser.h"
 #include "dmlparser.h"
 
+/*
+ * Loop through each token of the statement and fill the
+ * data array provided which the user is responsible for
+ * freeing.
+ *
+ * @return: number of tokens with sucess and -1 with failure
+ */
+int parser( char* statement, char** data ){
+    int i=0, total=1;
+    char *temp = strdup( statement );
+
+    char *end_str = temp;
+    char *token;
+    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
+    {
+
+        if ( i >= INIT_NUM_TOKENS ){
+            data = (char **)realloc( data, (total+1)*sizeof(char *) );
+        }
+        
+        int str_len = strlen(token);
+        data[i] = (char *)malloc((str_len+1)*sizeof(char)); 
+        memset( data[i], '\0', (str_len+1)*sizeof(char));
+        strcpy( data[i], token );
+        i++, total++;
+    }
+    return i;
+}
+
  /*
   * This function handles the parsing of DML statments
   * that return nothing, such as insertion, deletion, etc.
@@ -8,10 +37,35 @@
   * @param statement - the DML statement to execute
   * @return 0 on sucess; -1 on failure
   */
-int parse_dml_statement( char * statement ){
-  	// Check statement type
-  	// Call parse_dml_query if query type is SELECT, INSERT, UPDATE, DELETE
+int parse_dml_statement( char * statement, catalogs* schemas ){
+  	// Check statement type INSERT, UPDATE, DELETE
+    char** data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
+    int total = 0;
+    if( (total = parser( statement, data )) < 0 ){ return -1; }
+    int res = 0;
+    if( strcasecmp(data[0], "insert") == 0 ){
+        insert_cmd* insert = build_insert( total, data, schemas );
+        // exec
+        res = execute_insert( insert,schemas );
+    }else if( strcasecmp(data[0], "update") == 0 ){
+        update_cmd* update = build_update( total, data, schemas );
+        // exec
+        res = execute_update( update, schemas );
+    }else if( strcasecmp(data[0], "delete") == 0 ){
+        delete_cmd* delete = build_delete( total, data, schemas );
+        // exec
+        res = execute_delete( update, schemas );
+    }else{
+        fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);
+        return -1;
+    }
 
+    for (i = 0; i < total; i++){
+        free(data[i]);
+    }
+    free( data );
+    free( temp );
+    return (res >= 0 ) ? 0 : -1;
 }
 
 /*
@@ -25,8 +79,28 @@ int parse_dml_statement( char * statement ){
 				  The user of the function will be resposible for freeing.
  * @return the number of tuples in the result, -1 if upon error.
  */
-int parse_dml_query(char * query, union record_item *** result){
+int parse_dml_query(char * query, union record_item *** result, catalogs* schemas ){
+    // Check statement type select
+    char** data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
+    int total = 0;
+    if( (total = parser( statement, data )) < 0 ){ return -1; }
+    union record_item** record;
+    if( strcasecmp(data[0], "select") == 0 ){
+        select_cmd* select = build_select( total, data, schemas );
+        // exec
+        record = execute_select( select, schemas );
+        // print record
+    }else{
+        fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);
+        return -1;
+    }
 
+    for (i = 0; i < total; i++){
+        free(data[i]);
+    }
+    free( data );
+    free( temp );
+    return (res >= 0 ) ? 0 : -1;
 }
 
 /*
