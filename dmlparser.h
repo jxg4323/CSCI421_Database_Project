@@ -44,17 +44,6 @@ typedef struct conditional_cmd_struct{
 	bool result_value;  // TODO: consider adding a bool value "use_value"
 } conditional_cmd;
 
-/*typedef struct set_attr{
-	char* attribute;
-	int type;
-	bool math_op; // True: execute operation on data
-	math_operations operation; // '+', '-', '*', '/'
-	char* new_value;
-	int operand_type;
-	char* operand;
-
-} set;*/
-
 /*
  * If the left or right attribute values are the same sa the equated attribute set
  * that value for the left or right int.
@@ -67,16 +56,20 @@ typedef struct conditional_cmd_struct{
  * math_op = True, use_left = False, use_right = False (NOT possible would be error)
  * math_op = False, use_left = True, use_right = True (NOT possible would be error)
  */
+
 typedef struct set_attr{
 	int equated_attr;
-	int left_attribute;
+	int left_attr;
 	int right_attr;
 	int type;
 	bool math_op; // True: execute operation on data
-	bool use_left; // True: use value of this attribute in operation
-	bool use_right; // True: use value of other attribute
+	bool use_left_attr; // True: use left side attribute in operation
+	bool use_right_attr; // True: use right side attribute in operation
+	bool left_val_set; // True: new_left_value was set
+	bool right_val_set; // True: new_right_value was set
 	math_operations operation; // '+', '-', '*', '/'
-	union record_item new_value;
+	union record_item new_left_value;
+	union record_item new_right_value;
 } set;
 
 typedef struct where_node{
@@ -97,6 +90,7 @@ typedef struct select_cmd_struct{
 	int num_attributes;
 	int num_tables; // number of tables to select from
 	char** attributes_to_select; // not neccessarilly from the same table
+	bool wildcard;
 	int* from_tables; // if multiple perform cartesian product of tables to then act upon!!
 	where_cmd* conditions;
 	char** orderby; // TODO: add orderby
@@ -242,10 +236,12 @@ void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType
 comparators get_comparator( char* c );
 bool is_attribute( char* check );
 char* get_attr_name_from_token( char* attr_token );
+int get_names_from_token( char* attr_token, char*** return_array );
 int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas );
 bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right );
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas );
 int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas );
+int find_attribute_new( table_catalog** tables, int num_tables, int* tab_idx, char* attr_name );
 int set_compare_value( char* value, int type, union record_item* r_value );
 int get_value_type( char* value, int attr_type );
 where_cmd* new_where_node();

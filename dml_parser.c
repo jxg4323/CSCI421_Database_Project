@@ -41,11 +41,139 @@ int parse_dml_query(char * query, union record_item *** result){
  * @return new select command structure that the user is responsible for freeing 
       if no errors were encountered, o.w. return NULL
  */
-select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){}
+select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
+    int from_idx = -1;
+    int where_idx = -1;
+    int orderby_idx = -1;
+    for(int i = 1; i < token_count; i++){
+        if(strcmp(tokens[token_count], "from") == 0 && from_idx == -1){ from_idx = i; }
+        else if(strcmp(tokens[token_count], "where") == 0 && where_idx == -1){ where_idx = i; }
+        else if(strcmp(tokens[token_count], "orderby") == 0 && orderby_idx == -1){ orderby_idx = i; }
+    }
+    if(from_idx == -1 || where idx == -1 ){ return NULL; }
+    int num_attrs_to_select = from_idx -1;
+    int num_tables_to_select = (where_idx - from_idx) - 1;
+    table_catalog** tables_to_select = malloc(sizeof(table_catalog*) * num_tables_to_select);
+    char** tab_names = malloc(sizeof(char*) * num_tables_to_select);
+    for(int i = 0; i < num_tables_to_select; i++){
+        tables_to_select[i] = get_catalog_p(schemas, tokens[i+from_idx+1]);
+        if(tables_to_select[i] == NULL) {
+            free(tab_names);
+            free(tables_to_select);
+            return NULL;
+        }
+        tab_names[i] = tokens[i+from_idx+1];
+    }
+    int current_token = 1;
+    bool isValid = true;
+    char** attrs_to_select = malloc(sizeof(char*) * num_attrs_to_select);
+    int current_attr = 0;
+    bool wildcard = false;
+    if(from_idx == 2 && strcmp(tokens[1], "*") ==0){
+        wildcard = true;
+    }
+    while(current_token < from_idx && isValid == true && wildcard == false){
+        char** names;
+        int names_count = get_names_from_token(tokens[current_token], &names);
+        if(names_count < 1){ isValid = false; }
+        else{
+            if(names_count == 1){
+                int tab_idx;
+                int attr_loc = find_attribute_new(tables_to_select, num_tables_to_select, &tab_idx, names[0]);
+                if(attr_loc < 0 ){ isValid = false; } else { attrs_to_select[current_attr] = tokens[current_token]; }
+            } else {
+                int tab_idx = -1;
+                for(int i = 0; i < num_tables_to_select; i++){
+                    if(strcmp(names[0], tables_to_select[i]->table_name) == 0 ){
+                        tab_idx = i;
+                    }
+                }
+                if(tab_idx < 0){ isValid = false; }
+                else{
+                    int attr_loc = get_attr_loc(tables_to_select[tab_idx], names[1]);
+                    if(attr_loc < 0){ isValid = false; } else { attrs_to_select[current_attr] = tokens[current_token]; }
+                }
+                current_token++;
+                current_attr++;
+                for(int i = 0; i < names_count; i++){
+                    free(names[i]);
+                }
+                free(names);
+            }
+        }
+    }
+    if(isValid == false){
+        free(tables_to_select);
+        free(tab_names);
+        free(attrs_to_select);
+        return NULL;
+    }
+    int where_token_count;
+    bool where_set = true;
+    if(orderby_idx < 0 ){ where_token_count = (token_count - where_idx) + 1; } else { where_token_count = orderby_idx - where_idx; }
+    where_cmd* where = build_where(tab_names, num_tables_to_select, where_idx, tokens + (where_id*sizeof(char*)), schemas);
+    if(where == NULL){
+        where_set = false;
+        isValid = false;
+    }
+    char** orderby_array = NULL;
+    bool orderby_array_set = false;
+    if(isValid == true && orderby_idx >= 0){
+        orderby_array_set = true;
+        orderby_array = malloc(sizeof(char*) * ((token_count-orderby_idx)-1));
+        current_token = orderby_idx+1;
+        for(int i = 0; i < ((token_count-orderby_idx)-1); i++){
+            bool occurs = false;
+            for(int j = 0; j < num_attrs_to_select; j++){
+                if(strcmp(tokens[current_token], attrs_to_select[j])){
+                    occurs = true;
+                    orderby_array[i] = tokens[current_token]
+                }
+            }
+            current_token++;
+            if(occurs == false){ isValid = false; }
+        }
+    }
+    if(isValid == false){
+        free(attrs_to_select);
+        free(tab_names);
+        free(tables_to_select);
+        if(where_set == true){
+            destroy_where_stack(&where);
+        }
+        if(orderby_array_set == true){
+            free(orderby_array);
+        }
+    }
+    int* table_ids = malloc(sizeof(int) * num_tables_to_select);
+    for(int i = 0; i < num_tables_to_select; i++){
+        table_ids[i] = tables_to_select[i]->id;
+    }
+    free(tables_to_select);
+    select_cmd* command = malloc(sizeof(select_cmd));
+    command->num_attributes = num_attrs_to_select;
+    if(wildcard == true){
+        command-> attributes_to_select = NULL;
+        command->wildcard = true;
+        free(attrs_to_select);
+    } else {
+        command->attributes_to_select = attrs_to_select;
+        command->wildcard = false;
+    }
+    command->num_tables = num_tables_to_select;
+    command->from_tables = table_ids;
+    command->conditions = where;
+    if(orderby_array_set == true){
+        command->orderby = orderby_array;
+    } else {
+        command->orderby = NULL;
+    }
+    return command;
+}
 
 int build_set( int token_count, char** tokens, table_catalog* table, set *** set_array){
     int set_count = 0;
-    int current_token = 1;
+    int current_token = 0;
     int attr_type = -1;
     (*set_array) = malloc(sizeof(set *));
     bool isValid = true;
@@ -55,19 +183,55 @@ int build_set( int token_count, char** tokens, table_catalog* table, set *** set
         (*set_array)[set_count-1] = malloc(sizeof(set));
         int attr_loc = get_attr_loc(table, tokens[current_token]);
         if(attr_loc == -1 ){ isValid = false; } else {
-            (*set_array)[set_count-1]->attribute = tokens[current_token];
+            (*set_array)[set_count-1]->attribute = attr_loc;
             current_token++;
             if(strcmp(tokens[current_token],"=") != 0){isValid = false;}
             else {current_token++;}
         }
         if(isValid == true) {
-            attr_type = is_attribute(tokens[current_token]);
-            if(attr_type == table->attributes[attr_loc].type){
-                (*set_array)[set_count-1]->type = attr_type;
-                (*set_array)[set_count-1]->new_value = tokens[current_token];
+            if(is_attribute(tokens[current_token]) = true){
+                attr_type = get_value_type(tokens[current_token], table->attributes[attr_loc].type);
+            } else { attr_type = -1; }
+            if(attr_type == table->attributes[attr_loc].type) {
+                (*set_array)[set_count - 1]->type = attr_type;
+                union record_item left_item;
+                switch (attr_type){
+                case 0: // int
+                    left_item.i = atoi(tokens[current_token]);
+                case 1: // double
+                    left_item.d = atof(tokens[current_token]);
+                case 2: // bool
+                    if (strcmp("true", tokens[current_token]) == 0) {
+                        left_item.b = true;
+                    } else if (strcmp("false", tokens[current_token]) == 0) {
+                        left_item.b = false;
+                    } else {
+                        isValid = false;
+                    }
+                case 3: // char
+                    int len = table->attributes[current_attr].char_length;
+                if (len > strlen(tokens[current_token])) {
+                    isValid = false;
+                } else {
+                    left_item.c = tokens[current_token];
+                }
+                case 4: // varchar
+                    left_item.v = tokens[current_token];
+                }
+                (*set_array)[set_count-1]->new_value_left = left_item;
+                (*set_array)[set_count-1]->left_val_set = true;
+                (*set_array)[set_count-1]->use_left_attr = false;
                 current_token++;
             } else {
-                isValid = false;
+                int left_attr_loc = get_attr_loc(table, tokens[current_token]);
+                if(left_attr_loc < 0) {
+                    isValid = false;
+                } else {
+                    (*set_array)[set_count-1]->left_attr = left_attr_loc;
+                    (*set_array)[set_count-1]->left_val_set = false;
+                    (*set_array)[set_count-1]->use_left_attr = true;
+                    current_token++;
+                }
             }
         }
         if(isValid == true && strcmp(tokens[current_token],"") != 0){
@@ -86,18 +250,50 @@ int build_set( int token_count, char** tokens, table_catalog* table, set *** set
             }
             current_token++;
             if(isValid == true){
-                int new_loc = get_attr_loc(table, tokens[token_count]);
-                if(new_loc != -1){
-                    if(table->attributes[new_loc].type == attr_type) {
-                        (*set_array)[set_count - 1]->operand = tokens[current_token];
-                        (*set_array)[set_count - 1]->operand_type = 0;
+                if(is_attribute(tokens[current_token]) = true){
+                    attr_type = get_value_type(tokens[current_token], table->attributes[attr_loc].type);
+                } else { attr_type = -1; }
+                int right_attr_loc = get_attr_loc(table, tokens[token_count]);
+                if(attr_type == table->attributes[attr_loc].type) {
+                    (*set_array)[set_count - 1]->type = attr_type;
+                    union record_item right_item;
+                    switch (attr_type){
+                        case 0: // int
+                            right_item.i = atoi(tokens[current_token]);
+                        case 1: // double
+                            right_item.d = atof(tokens[current_token]);
+                        case 2: // bool
+                            if (strcmp("true", tokens[current_token]) == 0) {
+                                right_item.b = true;
+                            } else if (strcmp("false", tokens[current_token]) == 0) {
+                                right_item.b = false;
+                            } else {
+                                isValid = false;
+                            }
+                        case 3: // char
+                            int len = table->attributes[current_attr].char_length;
+                            if (len > strlen(tokens[current_token])) {
+                                isValid = false;
+                            } else {
+                                right_item.c = tokens[current_token];
+                            }
+                        case 4: // varchar
+                            right_item.v = tokens[current_token];
                     }
-                    else {
+                    (*set_array)[set_count-1]->new_right_value = right_item;
+                    (*set_array)[set_count-1]->right_val_set = true;
+                    (*set_array)[set_count-1]->use_right_attr = false;
+                    current_token++;
+                } else {
+                    int right_attr_loc = get_attr_loc(table, tokens[current_token]);
+                    if(right_attr_loc < 0) {
                         isValid = false;
+                    } else {
+                        (*set_array)[set_count-1]->right_attr = right_attr_loc;
+                        (*set_array)[set_count-1]->right_val_set = false;
+                        (*set_array)[set_count-1]->use_right_attr = true;
+                        current_token++;
                     }
-                } else if(attr_type = is_attribute(tokens[current_token])){
-                    (*set_array)[set_count-1]->operand = tokens[current_token];
-                    (*set_array)[set_count-1]->operand_type = 1;
                 }
             }
         }
@@ -213,7 +409,7 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
     bool isValid = true;
     int current_token = 4;
     int current_record = 0;
-    int current_attr = 0;
+    int current_attr;
     int attr_count = table->attribute_count;
     if((token_count - 4) % (attr_count + 1) != 0 ){ return NULL; }
     int num_records = (token_count - 4)/(attr_count + 1);
@@ -221,11 +417,26 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
     for( int i = 0; i < num_records; i++){
         records[i] = malloc(sizeof(union record_item) * attr_count);
     }
+    int attr_type;
     while(current_token < token_count && current_record < num_records && isValid == true){
+        current_attr = 0;
         while(current_attr < attr_count && isValid == true){
             union record_item item;
-            int attr_type = table->attributes[current_attr].type;
-            if(attr_type != is_attribute(tokens[current_token])){ isValid = false;}
+            attr_type = table->attributes[current_attr].type;
+            if(attr_type != is_attribute(tokens[current_token])){
+                switch (attr_type) {
+                    case 0: // int
+                        item.i = INT_MAX;
+                    case 1:
+                        item.d = INT_MAX;
+                    case 2:
+                        item.b = INT_MAX;
+                    case 3:
+                        memset(item.c, '\0', (255)*sizeof(char));
+                    case 4:
+                        memset(item.v, '\0', (255)*sizeof(char));
+                }
+            }
             else {
                 switch (type) {
                     case 0: // int
@@ -250,16 +461,39 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
                     case 4: // varchar
                         item.v = tokens[current_token];
                 }
+                current_token++;
             }
             if(isValid == true){
                 records[current_record][current_attr] = item;
             }
-            current_token++;
+            current_attr++;
         }
+        if(strcmp("", tokens[current_token]) != 0){ isValid = false; }
         current_token++;
         current_record++;
     }
+    if(current_token < token_count || current_record < num_records){
+        isValid = false;
+    }
     if(isValid == true){
+        while(current_attr < attr_count){
+            union record_item item;
+            attr_type = table->attributes[current_attr].type;
+            switch (attr_type) {
+                case 0: // int
+                    item.i = INT_MAX;
+                case 1:
+                    item.d = INT_MAX;
+                case 2:
+                    item.b = INT_MAX;
+                case 3:
+                    memset(item.c, '\0', (255)*sizeof(char));
+                case 4:
+                    memset(item.v, '\0', (255)*sizeof(char));
+            }
+            records[num_records-1][current_attr] = item;
+            current_attr++;
+        }
         insert_cmd * command = malloc(sizeof(insert_cmd));
         command->table_id = table->id;
         command->records = records;
@@ -673,6 +907,44 @@ char* get_attr_name_from_token( char* attr_token ){
 }
 
 /*
+ * Tokenize the attribute token based on '.' and assume
+ * the attribute name is in the last token.
+ * @return the name of the attribute in the token which the user
+           is responsible for freeing.
+ */
+int get_names_from_token( char* attr_token, char*** return_array ){
+    int period_count = char_occur_count( attr_token, '.' );
+    char* temp = strdup( attr_token );
+    char* hold1;
+    char* hold2;
+    int array_size = -1;
+    switch( period_count ){
+        case 0:
+            hold1 = strtok( temp, "." );
+            (*return_array) = malloc(sizeof(char*));
+            (*return_array)[0] = (char *)malloc(strlen(hold1)*sizeof(char));
+            strcpy( (*return_array)[0], hold1 );
+            array_size = 1;
+            break;
+        case 1:
+            hold1 strtok( temp, "." );
+            hold2 = strtok( NULL, "." );
+            (*return_array) = malloc(sizeof(char*) * 2);
+            (*return_array)[0] = malloc(strlen(hold1)*sizeof(char));
+            (*return_array)[1] = malloc(strlen(hold2)*sizeof(char));
+            strcpy( (*return_array)[0], hold1 );
+            strcpy( (*return_array)[1], hold2 );
+            array_size = 2;
+            break;
+        default:
+            return_array = NULL;
+            fprintf(stderr, "'%s' isn't a valid attribute token.\n", attr_token );
+    }
+    free( temp );
+    return array_size;
+}
+
+/*
  *
  * Search through list of table ids for the provided attribute.
  *
@@ -696,6 +968,41 @@ int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_
             find_count++;
             found = temp;
             *par_tab_id = temp;
+        }
+    }
+    if( found < 0 ){
+        fprintf(stderr, "None of the tables contain an attribute '%s'\n.", attr_name);
+        return -1;
+    }
+    if( find_count > 1 ){
+        fprintf(stderr, "Multiple tables have an attribute named '%s'\n.", attr_name);
+        return -1;
+    }
+    return found;
+}
+
+/*
+ *
+ * Search through list of table ids for the provided attribute.
+ *
+ * @parm: tables - List of table schemas to search through
+ * @parm: num_tables - Number of tables in the list
+ * @parm: tab_idx - return parameter for table schema index where
+                       attribute was found
+ * @parm: attr_name - attribute name to search for
+ * @return: attribute location if found in the list of table schema ids
+            if attribute not found then return -1 and print error.
+            if attribute found in multiple tables return -1 and print error.
+ */
+int find_attribute_new( table_catalog** tables, int num_tables, int* tab_idx, char* attr_name ){
+    int found = -1;
+    int find_count = 0;
+    for( int i = 0; i<num_tables; i++ ){
+        int temp = -1;
+        if( (temp = get_attr_loc( tables[i], attr_name )) > 0 ){
+            find_count++;
+            found = temp;
+            *tab_idx = temp;
         }
     }
     if( found < 0 ){
