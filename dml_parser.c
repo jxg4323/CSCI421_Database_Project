@@ -351,6 +351,8 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  */
 union record_item** execute_select( select_cmd* select, catalogs* shcemas ){}
 
+
+// TODO: update the executions or builds to check that primary keys, and foreign keys aren't updated
 /*
  * Insert the records in the command structure into the
  * designated table and if any errors occur on insert then
@@ -371,7 +373,7 @@ int execute_insert( insert_cmd* insert, catalogs* schemas ){
     return result;
 }
 
-/*
+/* 
  * Execute the update command based on the structure given,
  * loop through each record in the table to be updated and 
  * execute the set operations on the records that match the

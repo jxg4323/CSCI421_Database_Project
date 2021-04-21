@@ -13,7 +13,6 @@
 #include "tableschema.h"
 #include "ddl_parser.h"
 #include "dml_parser.h"
-#include "dmlparser.h"
 
 static char* db_path;
 

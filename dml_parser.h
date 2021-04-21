@@ -8,6 +8,7 @@
 #define DML_PARSER_H
 
 #include "storagemanager.h"
+#include "tableschema.h"
  /*
   * This function handles the parsing of DML statments
   * that return nothing, such as insertion, deletion, etc.
