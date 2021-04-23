@@ -2,6 +2,8 @@
 
 #ifndef __DMLPARSER_H__
 #define __DMLPARSER_H__
+#define DELIMITER " \t\r\n();"
+#define INIT_NUM_TOKENS 100
 
 /*
  * Logical Comparator Types stored as integers.
@@ -82,6 +84,7 @@ typedef struct select_cmd_struct{
 	int num_attributes;
 	int num_tables; // number of tables to select from
 	char** attributes_to_select; // not neccessarilly from the same table
+	bool wildcard;
 	int* from_tables; // if multiple perform cartesian product of tables to then act upon!!
 	where_cmd* conditions;
 	char** orderby; // TODO: add orderby
@@ -111,6 +114,8 @@ typedef struct delete_cmd_struct{
  			if no errors were encountered, o.w. return NULL
  */
 select_cmd* build_select( int token_count, char** tokens, catalogs* schemas );
+
+int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array);
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -229,10 +234,12 @@ void backtrack_insert( int rec_count, insert_cmd* insert );
 int change_record_val( union record_item* old_val, union record_item new_val, int type );
 int exec_math_op( union record_item* result, union record_item left, union record_item right, math_operations op, int type, int lsize, int rsize);
 char* get_attr_name_from_token( char* attr_token );
+int get_names_from_token( char* attr_token, char*** return_array );
 int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas );
 bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right );
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas );
 int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas );
+int find_attribute_new( table_catalog** tables, int num_tables, int* tab_idx, char* attr_name );
 int set_compare_value( char* value, int type, union record_item* r_value );
 int get_value_type( char* value, int attr_type );
 where_cmd* new_where_node();
