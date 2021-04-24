@@ -121,13 +121,25 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     int orderby_idx = -1;
     // get indices of separator tokens
     for(int i = 1; i < token_count; i++){
-        if(strcmp(tokens[token_count], "from") == 0 && from_idx == -1){ from_idx = i; }
-        else if(strcmp(tokens[token_count], "where") == 0 && where_idx == -1){ where_idx = i; }
-        else if(strcmp(tokens[token_count], "orderby") == 0 && orderby_idx == -1){ orderby_idx = i; }
+        if(strcasecmp(tokens[i], "from") == 0 && from_idx == -1){ from_idx = i; }
+        else if(strcasecmp(tokens[i], "where") == 0 && where_idx == -1){ where_idx = i; }
+        else if(strcasecmp(tokens[i], "orderby") == 0 && orderby_idx == -1){ orderby_idx = i; }
     }
-    if(from_idx == -1 || where_idx == -1 ){ return NULL; }
+    
+    if(from_idx == -1 ){ 
+        fprintf(stderr, "ERROR: There wasn't any 'from' keyword in your statement.\n");
+        return NULL; 
+    }
+    if( from_idx <= 1 ){
+        fprintf(stderr, "ERROR: There wasn't any attributes after the 'select' keyworkd.\n");
+        return NULL;
+    }
+    if( where_idx <= from_idx && where_idx != -1){
+        fprintf(stderr, "ERROR: 'where' statement was before 'from'.\n");
+        return NULL;
+    }
     int num_attrs_to_select = from_idx -1;
-    int num_tables_to_select = (where_idx - from_idx) - 1;
+    int num_tables_to_select = ((where_idx == -1? token_count : where_idx) - from_idx) - 1;
     table_catalog** tables_to_select = malloc(sizeof(table_catalog*) * num_tables_to_select);
     char** tab_names = malloc(sizeof(char*) * num_tables_to_select);
     // get the tables being selected from
@@ -187,12 +199,13 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
         return NULL;
     }
     int where_token_count;
+    where_cmd* where = NULL;
     bool where_set = true;
     if(orderby_idx < 0 ){ where_token_count = (token_count - where_idx) + 1; } else { where_token_count = orderby_idx - where_idx; }
-    where_cmd* where = build_where(tab_names, num_tables_to_select, where_idx, tokens + (where_idx*sizeof(char*)), schemas);
-    if(where == NULL){
+    if( where_idx > 0 ){
+        where_cmd* where = build_where(tab_names, num_tables_to_select, where_idx, tokens + (where_idx*sizeof(char*)), schemas);
+    }else{
         where_set = false;
-        isValid = false;
     }
     char** orderby_array = NULL;
     bool orderby_array_set = false;
@@ -1442,7 +1455,6 @@ bool check_types( int t_id, int first, int other, bool multitable, int ot_id, ca
     }
     return (first_type == other_type) && (first_type >= 0) && (other_type >= 0);
 }
-
 
 // Where Condition Stack Functions
 /*

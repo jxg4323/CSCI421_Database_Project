@@ -2,7 +2,7 @@
 
 #ifndef __DMLPARSER_H__
 #define __DMLPARSER_H__
-#define DELIMITER " \t\r\n();"
+#define DELIMITER " \t\r\n();,"
 #define INIT_NUM_TOKENS 100
 
 /*
