@@ -42,6 +42,11 @@ int parser( char* statement, char** data, bool use_commas ){
             int quote_count = char_occur_count( end_str, '\"' ); 
             // needs to be 2 --> 1 = error, 0 ignore
             if( quote_count%2 == 0 ){
+                int move = 0;
+                while( end_str[move] != '\"' && move < strlen(end_str) ){
+                    move++;
+                }
+                end_str = end_str+move;
                 delim = "\"";
             }else if( quote_count == 1 ){
                 fprintf(stderr, "ERROR: char/varchar value has only 1 '\"' in statement '%s'\n", end_str );
