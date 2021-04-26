@@ -600,18 +600,32 @@ update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
       if no errors were encountered, o.w. return NULL
  */
 delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){
-    if(token_count < 4){ return NULL; }
-    if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[1],"from") !=0
-        || strcmp(tokens[3],"where") !=0){ return NULL; }
+    if(token_count < 3){ 
+        fprintf(stderr, "ERROR: improper delete command, not enough arguments.\n" );
+        return NULL; 
+    }
+    if( strcasecmp(tokens[1],"from") !=0 ){ 
+        fprintf(stderr, "ERROR: expected 'from' after '%s' not '%s'.\n", tokens[0], tokens[1]);
+        return NULL; 
+    }
     table_catalog* table = get_catalog_p(schemas, tokens[2]);
-    if( table == NULL ){ return NULL; }
-    char ** table_name = malloc(sizeof(char*));
-    table_name[0] = table->table_name;
-    where_cmd* where = build_where(table_name, 1, token_count - 3, tokens + ((sizeof(char *) * 3)), schemas);
-    if( where == NULL ){ return NULL; }
-    delete_cmd * command = malloc(sizeof(command));
-    command->table_id = table->id;
-    command->conditions = where;
+    if( table == NULL ){ 
+        fprintf(stderr, "ERROR: '%s' isn't a known table.\n", tokens[2]);
+        return NULL; 
+    }
+    delete_cmd* command = init_delete_cmd( table->id );
+    int where_idx = (token_count>3) ? 3 : -1;
+    if( where_idx == 3 && strcasecmp(tokens[3], "where") != 0 ){
+        fprintf(stderr, "ERROR: '%s' is an improper 'where' clause.\n", tokens[3]);
+        destroy_delete( command );
+        return NULL;
+    }
+    if( where_idx == 3 ){
+        char ** table_name = malloc(sizeof(char*));
+        table_name[0] = table->table_name;
+        command->conditions = build_where(table_name, 1, token_count - 3, tokens+where_idx, schemas);
+        free( table_name );
+    }
     return command;
 }
 
@@ -1775,6 +1789,7 @@ void destroy_select( select_cmd* select ){
         free( select->orderby[i] );
     }
     free( select->orderby );
+    free( select );
 }
 
 update_cmd* init_update_cmd( int table_id ){
@@ -1794,6 +1809,23 @@ void manage_sets( update_cmd* update, int num_ops ){
 }
 
 void destroy_update( update_cmd* update ){
+    if( update->conditions != NULL ){
+        destroy_where_stack( &(update->conditions) );
+    }
     free( update->set_attrs );
     free( update );
+}
+
+delete_cmd* init_delete_cmd( int table_id ){
+    delete_cmd* delete = (delete_cmd*)malloc(sizeof(delete_cmd));
+    delete->table_id = table_id;
+    delete->conditions = NULL;
+    return delete;
+}
+
+void destroy_delete( delete_cmd* delete ){
+    if( delete->conditions != NULL ){
+        destroy_where_stack( &(delete->conditions) );
+    }
+    free( delete );
 }

@@ -261,6 +261,7 @@ void add_orderby( select_cmd* select, int num_orderby );
 update_cmd* init_update_cmd( int table_id );
 void manage_sets( update_cmd* update, int num_ops );
 void destroy_update( update_cmd* update );
-
+delete_cmd* init_delete_cmd( int table_id );
+void destroy_delete( delete_cmd* delete );
 
 #endif
