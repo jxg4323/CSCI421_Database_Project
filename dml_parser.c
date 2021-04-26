@@ -20,6 +20,9 @@ int parser( char* statement, char** data, bool use_commas ){
 
     while ( (token = strtok_r(end_str, delim, &end_str)) )
     {
+        // reset delimiter
+        if( use_commas ){ delim = " \t\r\n();"; }
+        else{ delim = DELIMITER; }
 
         int str_len = strlen(token);
         char* peek = strdup( end_str );
@@ -34,6 +37,16 @@ int parser( char* statement, char** data, bool use_commas ){
         }
         if ( i >= INIT_NUM_TOKENS ){
             data = (char **)realloc( data, (total+1)*sizeof(char *) );
+        }
+        if( next != NULL && next[0] == '\"' ){
+            int quote_count = char_occur_count( end_str, '\"' ); 
+            // needs to be 2 --> 1 = error, 0 ignore
+            if( quote_count%2 == 0 ){
+                delim = "\"";
+            }else if( quote_count == 1 ){
+                fprintf(stderr, "ERROR: char/varchar value has only 1 '\"' in statement '%s'\n", end_str );
+                return -1;
+            }
         }
 
         if(use_commas && strlen(end_str) > 0 && strcmp(token, ",") == 0 && strcmp(data[i-1],"\0") != 0 ){
@@ -645,22 +658,35 @@ delete_cmd* build_delete( int token_count, char** tokens, catalogs* schemas ){
       if no errors were encountered, o.w. return NULL
  */
 insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
-    if(token_count < 6){ return NULL; }
-    if( strcmp(tokens[0],"insert") != 0 || strcmp(tokens[1],"into") !=0
-        || strcmp(tokens[3],"values") !=0){ return NULL; }
+    if(token_count < 5){ 
+        fprintf(stderr, "ERROR: No values were found in the insert statement.\n");
+        return NULL; 
+    }
+    if( strcasecmp(tokens[1],"into") !=0 ){ 
+        fprintf(stderr, "ERROR: expected 'into' after 'insert' not '%s'\n", tokens[1]);
+        return NULL; 
+    }
+    if( strcasecmp(tokens[3],"values") !=0 ){
+        fprintf(stderr, "ERROR: expected 'values' after %s not '%s'\n", tokens[2], tokens[3]);
+        return NULL; 
+    }
     table_catalog* table = get_catalog_p(schemas, tokens[2]);
-    if( table == NULL ){ return NULL; }
+    if( table == NULL ){ 
+        fprintf(stderr, "ERROR: '%s' isn't a known table in the database.\n", tokens[2]);
+        return NULL; 
+    }
     bool isValid = true;
     int current_token = 4;
     int current_record = 0;
     int current_attr;
     int attr_count = table->attribute_count;
-    if((token_count - 4) % (attr_count + 1) != 0 ){ return NULL; }
-    int num_records = (token_count - 4)/(attr_count + 1);
-    union record_item** records = malloc(sizeof(union record_item*) * num_records);
-    for( int i = 0; i < num_records; i++){
-        records[i] = malloc(sizeof(union record_item) * attr_count);
+    if((token_count - 4) % (attr_count+1) != 0 ){ 
+        fprintf(stderr, "ERROR: values specified don't contain all values required for table '%s'\n", table->table_name);
+        return NULL; 
     }
+    int num_records = (token_count - 4)/(attr_count+1);
+    insert_cmd* command = init_insert_cmd( table->id, num_records, attr_count );
+
     int attr_type;
     // loop through each inserting record and build it
     while(current_token < token_count && current_record < num_records && isValid == true){
@@ -668,92 +694,27 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
         while(current_attr < attr_count && isValid == true){
             union record_item item;
             attr_type = table->attributes[current_attr].type;
-            if(attr_type != is_attribute(tokens[current_token])){
-                // set attributes in the record to null until a matching type is found
-                switch (attr_type) {
-                    case 0: // int
-                        item.i = INT_MAX;
-                    case 1:
-                        item.d = INT_MAX;
-                    case 2:
-                        item.b = INT_MAX;
-                    case 3:
-                        memset(item.c, '\0', (255)*sizeof(char));
-                    case 4:
-                        memset(item.v, '\0', (255)*sizeof(char));
-                }
-            }
-            else {
-                // if match is found insert the given value into the current attribute for the record
-                int len;
-                switch (attr_type) {
-                    case 0: // int
-                        item.i = atoi(tokens[current_token]);
-                    case 1: // double
-                        item.d = atof(tokens[current_token]);
-                    case 2: // bool
-                        if (strcmp("true", tokens[current_token]) == 0) {
-                            item.b = true;
-                        } else if (strcmp("false", tokens[current_token]) == 0) {
-                            item.b = false;
-                        } else {
-                            isValid = false;
-                        }
-                    case 3: // char
-                        len = table->attributes[current_attr].char_length;
-                        if (len > strlen(tokens[current_token])) {
-                            isValid = false;
-                        } else {
-                            strcpy(item.c, tokens[current_token]);
-                        }
-                    case 4: // varchar
-                        strcpy(item.v, tokens[current_token]);
-                }
-                current_token++;
+            if( set_compare_value(tokens[current_token], attr_type, &item) < 0 ){
+                isValid = false;
+                break;
             }
             if(isValid == true){
                 // add record to array of records
-                records[current_record][current_attr] = item;
+                command->records[current_record][current_attr] = item;
             }
             current_attr++;
+            current_token++;
         }
-        if(strcmp("", tokens[current_token]) != 0){ isValid = false; }
-        current_token++;
+        //current_token++;
         current_record++;
     }
-    if(current_token < token_count || current_record < num_records){
+    if(current_token<token_count-1 || current_record < num_records-1){
         isValid = false;
     }
     if(isValid == true){
-        while(current_attr < attr_count){
-            union record_item item;
-            attr_type = table->attributes[current_attr].type;
-            // set remaining attributes in the final record to null
-            switch (attr_type) {
-                case 0: // int
-                    item.i = INT_MAX;
-                case 1:
-                    item.d = INT_MAX;
-                case 2:
-                    item.b = INT_MAX;
-                case 3:
-                    memset(item.c, '\0', (255)*sizeof(char));
-                case 4:
-                    memset(item.v, '\0', (255)*sizeof(char));
-            }
-            records[num_records-1][current_attr] = item;
-            current_attr++;
-        }
-        insert_cmd * command = malloc(sizeof(insert_cmd));
-        command->table_id = table->id;
-        command->records = records;
-        command->num_records = num_records;
         return command;
     } else {
-        for( int i = 0; i < num_records; i++){
-            free(records[i]);
-        }
-        free(records);
+        destory_insert( command );
         return NULL;
     }
 }
@@ -1828,4 +1789,23 @@ void destroy_delete( delete_cmd* delete ){
         destroy_where_stack( &(delete->conditions) );
     }
     free( delete );
+}
+
+insert_cmd* init_insert_cmd( int table_id, int num_records, int rec_size ){
+    insert_cmd* insert = (insert_cmd*)malloc(sizeof(insert_cmd));
+    insert->table_id = table_id;
+    insert->num_records = num_records;
+    insert->records = (union record_item**)malloc(num_records*sizeof(union record_item*));
+    for(int i = 0; i<num_records; i++){
+        insert->records[i] = (union record_item*)malloc(rec_size*sizeof(union record_item));
+    }
+    return insert;
+}
+
+void destory_insert( insert_cmd* insert ){
+    for(int i = 0; i<insert->num_records; i++){
+        free(insert->records[i] );
+    }
+    free( insert->records );
+    free( insert );
 }

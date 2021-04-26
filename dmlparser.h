@@ -263,5 +263,7 @@ void manage_sets( update_cmd* update, int num_ops );
 void destroy_update( update_cmd* update );
 delete_cmd* init_delete_cmd( int table_id );
 void destroy_delete( delete_cmd* delete );
+insert_cmd* init_insert_cmd( int table_id, int num_records, int rec_size );
+void destory_insert( insert_cmd* insert );
 
 #endif
