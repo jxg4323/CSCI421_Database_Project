@@ -685,11 +685,11 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
     int current_record = 0;
     int current_attr;
     int attr_count = table->attribute_count;
-    if((token_count - 4) % (attr_count+1) != 0 ){ 
+    if((token_count - 4) % (attr_count) != 0 ){ 
         fprintf(stderr, "ERROR: values specified don't contain all values required for table '%s'\n", table->table_name);
         return NULL; 
     }
-    int num_records = (token_count - 4)/(attr_count+1);
+    int num_records = (token_count - 4)/(attr_count);
     insert_cmd* command = init_insert_cmd( table->id, num_records, attr_count );
 
     int attr_type;
@@ -1528,7 +1528,7 @@ bool is_attribute( char* check ){
 int get_value_type( char* value, int attr_type ){
     char first = value[0];
     char last = value[strlen(value)-1];
-    int val_type = -1;
+    int val_type = attr_type;
     if( is_number(value) ){ // numeric value
         val_type = (attr_type == 0) ? 0 : (attr_type == 1) ? 1 : -1;
     }else if( (first == '"' && last == '"') ){ // string value
