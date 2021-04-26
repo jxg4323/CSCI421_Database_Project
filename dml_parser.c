@@ -8,24 +8,66 @@
  *
  * @return: number of tokens with sucess and -1 with failure
  */
-int parser( char* statement, char** data ){
+int parser( char* statement, char** data, bool use_commas ){
     int i=0, total=1;
     char *temp = strdup( statement );
 
     char *end_str = temp;
     char *token;
-    while ( (token = strtok_r(end_str, DELIMITER, &end_str)) )
+    char* delim;
+    if( use_commas ){ delim = " \t\r\n();"; }
+    else{ delim = DELIMITER; }
+
+    while ( (token = strtok_r(end_str, delim, &end_str)) )
     {
 
+        int str_len = strlen(token);
+        char* peek = strdup( end_str );
+        char* next = strtok_r(peek, delim, &peek);
+
+        
+        // Have comma check, if comma count >1 or comma at the beggining of statment eject w/ error
+        int comma_count = char_occur_count( token, ',' );
+        if( comma_count > 1 || (token[0] == ',' && strlen(token)>1) ){
+            fprintf(stderr, "ERROR: statement provided had either too many commas or a misplaced comma before %s\n", end_str);
+            return -1;
+        }
         if ( i >= INIT_NUM_TOKENS ){
             data = (char **)realloc( data, (total+1)*sizeof(char *) );
         }
-        
-        int str_len = strlen(token);
-        data[i] = (char *)malloc((str_len+1)*sizeof(char)); 
-        memset( data[i], '\0', (str_len+1)*sizeof(char));
-        strcpy( data[i], token );
+
+        if(use_commas && strlen(end_str) > 0 && strcmp(token, ",") == 0 && strcmp(data[i-1],"\0") != 0 ){
+            // add empty token 
+            data[i] = (char *)malloc(sizeof(char));
+            memset(data[i], '\0', sizeof(char));
+        }else if( use_commas && strlen(end_str) > 0 && token[str_len-1] == ',' && strcmp(data[i-1],"\0") != 0 ){
+            data[i] = (char *)malloc((str_len+1)*sizeof(char));
+            memset(data[i], '\0', (str_len+1)*sizeof(char));
+            strncpy(data[i], token, str_len-1);
+            // add empty token after
+            data[i+1] = (char *)malloc(sizeof(char));
+            memset(data[i+1], '\0', sizeof(char));
+            i++, total++;
+        }else if(use_commas && strlen(end_str) > 0 && strcasecmp(next, "where") == 0 ){
+            data[i] = (char *)malloc((str_len+1)*sizeof(char));
+            memset(data[i], '\0', (str_len+1)*sizeof(char));
+            strcpy(data[i], token);
+            // add empty token after
+            data[i+1] = (char *)malloc(sizeof(char));
+            memset(data[i+1], '\0', sizeof(char));
+            i++, total++;
+        }else{
+            data[i] = (char *)malloc((str_len+1)*sizeof(char));
+            memset(data[i], '\0', (str_len+1)*sizeof(char));
+            strcpy(data[i], token);
+        }
+    
         i++, total++;
+    }
+    if( use_commas ){ // add null character at end
+        data[i] = (char *)malloc(sizeof(char));
+        memset(data[i], '\0', sizeof(char));
+        i++;
     }
     free( temp );
     return i;
@@ -41,21 +83,31 @@ int parser( char* statement, char** data ){
 int parse_dml_statement( char * statement, catalogs* schemas ){
   	// Check statement type INSERT, UPDATE, DELETE
     char** data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
+    char* temp = strdup( statement );
+    char* com_type = strtok(temp, DELIMITER);
     int total = 0;
-    if( (total = parser( statement, data )) < 0 ){ return -1; }
     int res = 0;
-    if( strcasecmp(data[0], "insert") == 0 ){
+    if( strcasecmp(com_type, "insert") == 0 ){
+        if( (total = parser( statement, data, false )) < 0 ){ return -1; }
         insert_cmd* insert = build_insert( total, data, schemas );
         // exec
-        res = execute_insert( insert,schemas );
-    }else if( strcasecmp(data[0], "update") == 0 ){
+        if( insert != NULL ){
+            res = execute_insert( insert,schemas );
+        }
+    }else if( strcasecmp(com_type, "update") == 0 ){
+        if( (total = parser( statement, data, true )) < 0 ){ return -1; }
         update_cmd* update = build_update( total, data, schemas );
         // exec
-        res = execute_update( update, schemas );
-    }else if( strcasecmp(data[0], "delete") == 0 ){
+        if( update != NULL ){
+            //res = execute_update( update, schemas );
+        }
+    }else if( strcasecmp(com_type, "delete") == 0 ){
+        if( (total = parser( statement, data, false )) < 0 ){ return -1; }
         delete_cmd* delete = build_delete( total, data, schemas );
         // exec
-        res = execute_delete( delete, schemas );
+        if( delete != NULL ){
+            res = execute_delete( delete, schemas );
+        }
     }else{
         fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);
         return -1;
@@ -65,6 +117,7 @@ int parse_dml_statement( char * statement, catalogs* schemas ){
         free(data[i]);
     }
     free( data );
+    free( temp );
     return (res >= 0 ) ? 0 : -1;
 }
 
@@ -83,13 +136,15 @@ int parse_dml_query(char * query, union record_item *** result, catalogs* schema
     // Check statement type select
     char** data = (char **)malloc(INIT_NUM_TOKENS*sizeof(char *));
     int total = 0;
-    if( (total = parser( query, data )) < 0 ){ return -1; }
+    if( (total = parser( query, data, false )) < 0 ){ return -1; }
     union record_item** record;
     int res = 0;
     if( strcasecmp(data[0], "select") == 0 ){
         select_cmd* select = build_select( total, data, schemas );
         // exec
-        record = execute_select( select, schemas );
+        if( select != NULL ){
+            record = execute_select( select, schemas );
+        }
         // print record
     }else{
         fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);
@@ -116,6 +171,7 @@ int parse_dml_query(char * query, union record_item *** result, catalogs* schema
       if no errors were encountered, o.w. return NULL
  */
 select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
+    select_cmd* command;
     int from_idx = -1;
     int where_idx = -1;
     int orderby_idx = -1;
@@ -138,23 +194,33 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
         fprintf(stderr, "ERROR: 'where' statement was before 'from'.\n");
         return NULL;
     }
+    if( orderby_idx <= from_idx && orderby_idx != -1){
+        fprintf(stderr, "ERROR: 'orderby' statement was before 'from'.\n");
+        return NULL;
+    }else if( orderby_idx <= where_idx && orderby_idx != -1 && where_idx != -1){
+        fprintf(stderr, "ERROR: 'orderby' statement was before 'where'.\n");
+        return NULL;
+    }
     int num_attrs_to_select = from_idx -1;
-    int num_tables_to_select = ((where_idx == -1? token_count : where_idx) - from_idx) - 1;
+    // if where_idx == -1 use the token count if orderby_idx == -1 otherwise use orderbyidx 
+    int num_tables_to_select = ((where_idx == -1 ? ((orderby_idx > 0) ? orderby_idx : token_count) : where_idx) - from_idx) - 1;
     table_catalog** tables_to_select = malloc(sizeof(table_catalog*) * num_tables_to_select);
-    char** tab_names = malloc(sizeof(char*) * num_tables_to_select);
+    char** tab_names = malloc(sizeof(char*) * num_tables_to_select); // for where build
+    command = init_select_cmd( num_attrs_to_select, num_tables_to_select, 0 ); // orderby not added here
     // get the tables being selected from
     for(int i = 0; i < num_tables_to_select; i++){
         tables_to_select[i] = get_catalog_p(schemas, tokens[i+from_idx+1]);
         if(tables_to_select[i] == NULL) {
+            fprintf(stderr, "ERROR: '%s' isn't a table in the database.\n", tokens[i+from_idx+1]);
             free(tab_names);
             free(tables_to_select);
             return NULL;
         }
-        tab_names[i] = tokens[i+from_idx+1];
+        command->from_tables[i] = tables_to_select[i]->id;
+        tab_names[i] = tokens[i+from_idx+1]; // might have to come back and turn into strcpy
     }
     int current_token = 1;
     bool isValid = true;
-    char** attrs_to_select = malloc(sizeof(char*) * num_attrs_to_select);
     int current_attr = 0;
     bool wildcard = false;
     // determine if wildcard is used
@@ -165,243 +231,309 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     while(current_token < from_idx && isValid == true && wildcard == false){
         char** names;
         int names_count = get_names_from_token(tokens[current_token], &names);
+        int tab_idx, attr_loc;
         if(names_count < 1){ isValid = false; }
         else{
             if(names_count == 1){ // only attribute name is given
-                int tab_idx;
-                int attr_loc = find_attribute_new(tables_to_select, num_tables_to_select, &tab_idx, names[0]);
-                if(attr_loc < 0 ){ isValid = false; } else { attrs_to_select[current_attr] = tokens[current_token]; }
+                attr_loc = find_attribute_new(tables_to_select, num_tables_to_select, &tab_idx, names[0]);
+                if(attr_loc < 0 ){ 
+                    fprintf(stderr, "ERROR: '%s' attribute wasn't in any of the from tables.\n", names[0]);
+                    isValid = false; 
+                } 
+                else { 
+                    command->attributes_to_select[current_attr] = realloc(command->attributes_to_select[current_attr], (strlen(names[0])+1)*sizeof(char));
+                    strcpy(command->attributes_to_select[current_attr], names[0]);
+                    command->selected[current_attr] = attr_loc;
+                    command->table_match[current_attr] = tab_idx;
+                }
             } else { // table and attribute name given
-                int tab_idx = -1;
+                tab_idx = -1;
                 for(int i = 0; i < num_tables_to_select; i++){
                     if(strcmp(names[0], tables_to_select[i]->table_name) == 0 ){
                         tab_idx = i;
                     }
                 }
-                if(tab_idx < 0){ isValid = false; }
+                if(tab_idx < 0){ 
+                    fprintf(stderr, "ERROR: '%s' table not in from clause.\n", names[0]);
+                    isValid = false; 
+                }
                 else{
-                    int attr_loc = get_attr_loc(tables_to_select[tab_idx], names[1]);
-                    if(attr_loc < 0){ isValid = false; } else { attrs_to_select[current_attr] = tokens[current_token]; }
-                }
-                current_token++;
-                current_attr++;
-                for(int i = 0; i < names_count; i++){
-                    free(names[i]);
-                }
-                free(names);
-            }
-        }
-    }
-    if(isValid == false){
-        free(tables_to_select);
-        free(tab_names);
-        free(attrs_to_select);
-        return NULL;
-    }
-    int where_token_count;
-    where_cmd* where = NULL;
-    bool where_set = true;
-    if(orderby_idx < 0 ){ where_token_count = (token_count - where_idx) + 1; } else { where_token_count = orderby_idx - where_idx; }
-    if( where_idx > 0 ){
-        where_cmd* where = build_where(tab_names, num_tables_to_select, where_idx, tokens + (where_idx*sizeof(char*)), schemas);
-    }else{
-        where_set = false;
-    }
-    char** orderby_array = NULL;
-    bool orderby_array_set = false;
-    // build the orderby array
-    if(isValid == true && orderby_idx >= 0){
-        orderby_array_set = true;
-        orderby_array = malloc(sizeof(char*) * ((token_count-orderby_idx)-1));
-        current_token = orderby_idx+1;
-        for(int i = 0; i < ((token_count-orderby_idx)-1); i++){
-            bool occurs = false;
-            for(int j = 0; j < num_attrs_to_select; j++){
-                if(strcmp(tokens[current_token], attrs_to_select[j])){
-                    occurs = true;
-                    orderby_array[i] = tokens[current_token];
+                    attr_loc = get_attr_loc(tables_to_select[tab_idx], names[1]);
+                    if(attr_loc < 0){ 
+                        fprintf(stderr,"ERROR: '%s' doesn't exists in table '%s'.\n", names[1], names[0]);
+                        isValid = false; 
+                    } 
+                    else { 
+                        command->attributes_to_select[current_attr] = realloc(command->attributes_to_select[current_attr], (strlen(names[1])+1)*sizeof(char));
+                        strcpy(command->attributes_to_select[current_attr], names[1]);
+                        command->selected[current_attr] = attr_loc;
+                        command->table_match[current_attr] = tab_idx;
+                    }
                 }
             }
             current_token++;
-            if(occurs == false){ isValid = false; }
+            current_attr++;
+            for(int i = 0; i < names_count; i++){
+                free(names[i]);
+            }
+            free(names);
         }
     }
     if(isValid == false){
-        free(attrs_to_select);
+        free(tables_to_select);
+        free(tab_names);
+        destroy_select( command );
+        return NULL;
+    }
+    int where_token_count; // includes 'where' token
+    int orderby_attrs = 0;
+    bool where_set = true;
+    if(orderby_idx < 0 ){ where_token_count = token_count - where_idx; } 
+    else { 
+        where_token_count = orderby_idx - where_idx; 
+        orderby_attrs = (token_count-orderby_idx)-1;
+        add_orderby( command, orderby_attrs );
+    }
+    if( where_idx > 0 ){
+        char** where_toks = tokens+where_idx;
+        command->conditions = build_where(tab_names, num_tables_to_select, where_token_count, where_toks, schemas);
+    }else{
+        where_set = false;
+    }
+    // build the orderby array
+    if(isValid == true && orderby_idx >= 0){
+        current_token = orderby_idx+1;
+        for(int i = 0; i < orderby_attrs; i++){
+            bool occurs = false;
+            for(int j = 0; j < num_attrs_to_select; j++){ // TODO: comeback and deal with wildcard
+                if(strcmp(tokens[current_token], command->attributes_to_select[j]) == 0){
+                    occurs = true;
+                    command->orderby[i] = realloc(command->orderby[i], (strlen(tokens[current_token])+1)*sizeof(char));
+                    strcpy(command->orderby[i], tokens[current_token]);
+                }
+            }
+            current_token++;
+            if(occurs == false){ 
+                fprintf(stderr, "ERROR: '%s' attribute wasn't in the select clause.\n", tokens[current_token]);
+                isValid = false; 
+            }
+        }
+    }
+    if(isValid == false){
         free(tab_names);
         free(tables_to_select);
-        if(where_set == true){
-            destroy_where_stack(&where);
-        }
-        if(orderby_array_set == true){
-            free(orderby_array);
-        }
+        destroy_select( command );
     }
-    int* table_ids = malloc(sizeof(int) * num_tables_to_select);
-    for(int i = 0; i < num_tables_to_select; i++){
-        table_ids[i] = tables_to_select[i]->id;
-    }
-    free(tables_to_select);
-    select_cmd* command = malloc(sizeof(select_cmd));
-    command->num_attributes = num_attrs_to_select;
+    free( tables_to_select );
+    free( tab_names );
     if(wildcard == true){
-        command-> attributes_to_select = NULL;
         command->wildcard = true;
-        free(attrs_to_select);
     } else {
-        command->attributes_to_select = attrs_to_select;
         command->wildcard = false;
-    }
-    command->num_tables = num_tables_to_select;
-    command->from_tables = table_ids;
-    command->conditions = where;
-    if(orderby_array_set == true){
-        command->orderby = orderby_array;
-    } else {
-        command->orderby = NULL;
     }
     return command;
 }
 
-int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array){
+int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array, catalogs* schemas ){
     int set_count = 0;
     int current_token = 0;
+    int prev = 0;
     int attr_type = -1;
-    (*set_array) = malloc(sizeof(set));
     bool isValid = true;
-    // loop through each attribute set command
-    while( current_token < token_count && isValid == true ){
+    // loop through each attribute set command  //TODO: change remove isValid and add helper functions to use returns instead
+    while( current_token < token_count-1 && isValid == true ){
         set_count++;
-        if( set_count > 1){ realloc((*set_array), sizeof(set) * set_count); }
-        // get info on equated_attr
-        int attr_loc = get_attr_loc(table, tokens[current_token]);
-        if(attr_loc == -1 ){ isValid = false; } else {
-            (*set_array)[set_count-1].equated_attr = attr_loc;
-            current_token++;
-            if(strcmp(tokens[current_token],"=") != 0){isValid = false;}
-            else {current_token++;}
-        }
-        if(isValid == true) {
-            // get info on left_value / left_attribute
-            if(is_attribute(tokens[current_token]) == true){
-                attr_type = get_value_type(tokens[current_token], table->attributes[attr_loc].type);
-            } else { attr_type = -1; }
-            if(attr_type == table->attributes[attr_loc].type) {
-                (*set_array)[set_count - 1].type = attr_type;
-                union record_item left_item;
-                int len;
-                switch (attr_type) {
-                    case 0: // int
-                        left_item.i = atoi(tokens[current_token]);
-                    case 1: // double
-                        left_item.d = atof(tokens[current_token]);
-                    case 2: // bool
-                        if (strcmp("true", tokens[current_token]) == 0) {
-                            left_item.b = true;
-                        } else if (strcmp("false", tokens[current_token]) == 0) {
-                            left_item.b = false;
-                        } else {
-                            isValid = false;
-                        }
-                    case 3: // char
-                        len = table->attributes[attr_loc].char_length;
-                        if (len > strlen(tokens[current_token])) {
-                            isValid = false;
-                        } else {
-                            strcpy(left_item.c, tokens[current_token]);
-                        }
-                    case 4: // varchar
-                        strcpy(left_item.v, tokens[current_token]);
-                }
-                (*set_array)[set_count-1].new_left_value = left_item;
-                (*set_array)[set_count-1].left_val_set = true;
-                (*set_array)[set_count-1].use_left_attr = false;
-                current_token++;
+        if( set_count > 1){ (*set_array) = realloc((*set_array), sizeof(set) * set_count); } // TODO: might have to change to use manage_sets
+
+        int equated_loc;
+        int equals_loc;
+        // get null index
+        if( current_token+4 < token_count && strcmp(tokens[current_token+4],"\0") == 0 ){ // attr = val/attr
+            equated_loc = current_token+1;
+            equals_loc = current_token+2;
+            int other_loc = current_token+3;
+            // confirm equated attr is attribute
+            int attr_loc = get_attr_loc(table, tokens[equated_loc]);
+            if(attr_loc == -1 ){ 
+                fprintf(stderr, "ERROR: '%s' isn't an attribute in table %s.\n", tokens[equated_loc], table->table_name);
+                isValid = false; 
             } else {
-                int left_attr_loc = get_attr_loc(table, tokens[current_token]);
-                if(left_attr_loc < 0) {
+                (*set_array)[set_count-1].equated_attr = attr_loc;
+                if(strcmp(tokens[equals_loc],"=") != 0){
+                    fprintf(stderr, "ERROR: expected an '=' after '%s' not '%s'.\n", tokens[equated_loc], tokens[equals_loc]);
                     isValid = false;
-                } else {
-                    (*set_array)[set_count-1].left_attr = left_attr_loc;
-                    (*set_array)[set_count-1].left_val_set = false;
-                    (*set_array)[set_count-1].use_left_attr = true;
-                    current_token++;
                 }
             }
-        }
-        if(isValid == true && strcmp(tokens[current_token],"") != 0){
-            // determine if this set uses an operation
-            if(attr_type != 0 && attr_type != 1){ isValid = false; }
-            else{
-                (*set_array)[set_count-1].math_op = true;
-                if(strcmp(tokens[current_token],"+") == 0){
-                    (*set_array)[set_count-1].operation = plus;
-                } else if(strcmp(tokens[current_token],"-") == 0){
-                    (*set_array)[set_count-1].operation = minus;
-                } else if(strcmp(tokens[current_token],"*") == 0){
-                    (*set_array)[set_count-1].operation = multiply;
-                } else if(strcmp(tokens[current_token],"/") == 0){
-                    (*set_array)[set_count-1].operation = divide;
-                } else { isValid = false; }
-            }
-            current_token++;
-            if(isValid == true){
-                if(is_attribute(tokens[current_token]) == true){
-                    attr_type = get_value_type(tokens[current_token], table->attributes[attr_loc].type);
-                } else { attr_type = -1; }
-                // get info on the right_value / right_attribute
-                int right_attr_loc = get_attr_loc(table, tokens[token_count]);
-                if(attr_type == table->attributes[attr_loc].type) {
-                    union record_item right_item;
-                    int len;
-                    switch (attr_type){
-                        case 0: // int
-                            right_item.i = atoi(tokens[current_token]);
-                        case 1: // double
-                            right_item.d = atof(tokens[current_token]);
-                        case 2: // bool
-                            if (strcmp("true", tokens[current_token]) == 0) {
-                                right_item.b = true;
-                            } else if (strcmp("false", tokens[current_token]) == 0) {
-                                right_item.b = false;
-                            } else {
-                                isValid = false;
-                            }
-                        case 3: // char
-                            len = table->attributes[right_attr_loc].char_length;
-                            if (len > strlen(tokens[current_token])) {
-                                isValid = false;
-                            } else {
-                                strcpy(right_item.c, tokens[current_token]);
-                            }
-                        case 4: // varchar
-                            strcpy(right_item.v, tokens[current_token]);
-                    }
-                    (*set_array)[set_count-1].new_right_value = right_item;
-                    (*set_array)[set_count-1].right_val_set = true;
-                    (*set_array)[set_count-1].use_right_attr = false;
-                    current_token++;
-                } else {
-                    int right_attr_loc = get_attr_loc(table, tokens[current_token]);
-                    if(right_attr_loc < 0) {
+            int type = get_attr_type( table,(*set_array)[set_count-1].equated_attr );
+            (*set_array)[set_count-1].type = type;
+
+            if( isValid ){
+                if( is_attribute(tokens[other_loc]) ){ // attribute
+                    int left_attr_loc = get_attr_loc(table, tokens[other_loc]);
+                    if(left_attr_loc < 0) {
+                        fprintf(stderr, "ERROR: '%s' isn't an attribute in table '%s'\n", tokens[other_loc], table->table_name);
                         isValid = false;
-                    } else {
-                        (*set_array)[set_count-1].right_attr = right_attr_loc;
+                    }
+                    if( !check_types( table->id, (*set_array)[set_count-1].equated_attr, left_attr_loc, false, -1, schemas) ){ 
+                        fprintf(stderr, "ERROR: '%s' isn't the same type as '%s'.\n", tokens[equated_loc], tokens[other_loc]);
+                        isValid = false;
+                    }else{
+                        (*set_array)[set_count-1].left_attr = left_attr_loc;
+                        (*set_array)[set_count-1].left_val_set = false;
+                        (*set_array)[set_count-1].use_left_attr = true;
+                        (*set_array)[set_count-1].use_right_attr = false;
                         (*set_array)[set_count-1].right_val_set = false;
-                        (*set_array)[set_count-1].use_right_attr = true;
-                        current_token++;
+                    }
+                }else{ // set to value
+                    union record_item left_item;
+                    if( set_compare_value( tokens[other_loc], type, &left_item) >= 0 ){
+                        (*set_array)[set_count-1].new_left_value = left_item;
+                        (*set_array)[set_count-1].left_val_set = true;
+                        (*set_array)[set_count-1].use_left_attr = false;
+                        (*set_array)[set_count-1].use_right_attr = false;
+                        (*set_array)[set_count-1].right_val_set = false;
+                    }else{ // invalid value
+                        fprintf(stderr, "ERROR: '%s' is an invalid value.\n", tokens[other_loc]);
+                        isValid = false;
                     }
                 }
             }
-        }
-        if(isValid == true){
-            current_token++;
-            if(strcmp(tokens[current_token],"") != 0){ isValid = false; }
-            current_token++;
+            current_token += 4;
+        }else if( current_token+6 < token_count && strcmp(tokens[current_token+6],"\0") == 0){ // attr = val/attr + val/attr
+            equated_loc = current_token+1;
+            equals_loc = current_token+2;
+            int left_loc = current_token+3;
+            int op_loc = current_token+4;
+            int right_loc = current_token+5;
+            union record_item left_val, right_val;
+            math_operations operator;
+            int attr_loc = get_attr_loc(table, tokens[equated_loc]);
+            if(attr_loc == -1 ){ 
+                fprintf(stderr, "ERROR: '%s' isn't an attribute in table %s.\n", tokens[equated_loc], table->table_name);
+                isValid = false; 
+            } else {
+                (*set_array)[set_count-1].equated_attr = attr_loc;
+                if(strcmp(tokens[equals_loc],"=") != 0){
+                    fprintf(stderr, "ERROR: expected an '=' after '%s' not '%s'.\n", tokens[equated_loc], tokens[equals_loc]);
+                    isValid = false;
+                }
+            }
+            int type = get_attr_type( table,(*set_array)[set_count-1].equated_attr );
+            (*set_array)[set_count-1].type = type;
+            if( isValid ){
+                if( is_attribute(tokens[left_loc]) ){ // equated = left <op> <right attr/val>
+                    int left_attr_loc = get_attr_loc(table, tokens[left_loc]);
+                    if(left_attr_loc < 0) {
+                        fprintf(stderr, "ERROR: '%s' isn't an attribute in table '%s'\n", tokens[left_loc], table->table_name);
+                        isValid = false;
+                    }
+                    if( !check_types( table->id, (*set_array)[set_count-1].equated_attr, left_attr_loc, false, -1, schemas) ){ 
+                        fprintf(stderr, "ERROR: '%s' isn't the same type as '%s'.\n", tokens[equated_loc], tokens[left_loc]);
+                        isValid = false;
+                    }
+
+                    if( is_attribute(tokens[right_loc]) ){ // eqauted = left <op> <right attr>
+                        int right_attr_loc;
+                        if( (right_attr_loc = get_attr_loc(table, tokens[right_loc])) < 0 ){
+                            fprintf(stderr, "ERROR: '%s' isn't an attribute in table '%s'\n", tokens[left_loc], table->table_name);
+                            isValid = false;
+                        }
+                        if( isValid && !check_types( table->id, (*set_array)[set_count-1].equated_attr, right_attr_loc, false, -1, schemas) ){ 
+                            fprintf(stderr, "ERROR: '%s' isn't the same type as '%s'.\n", tokens[equated_loc], tokens[right_loc]);
+                            isValid = false;
+                        }
+                        if( (operator = get_op(tokens[op_loc])) >= 0){
+                            (*set_array)[set_count-1].left_attr = left_attr_loc;
+                            (*set_array)[set_count-1].right_attr = right_attr_loc;
+                            (*set_array)[set_count-1].operation = operator;
+                            (*set_array)[set_count-1].math_op = true;
+                            (*set_array)[set_count-1].left_val_set = false;
+                            (*set_array)[set_count-1].use_left_attr = true;
+                            (*set_array)[set_count-1].use_right_attr = true;
+                            (*set_array)[set_count-1].right_val_set = false;
+                        }else{
+                            fprintf(stderr, "ERROR: '%s' isn't a valid operator.\n", tokens[op_loc]);
+                            isValid = false;
+                        }
+                    }else{ // equated = left <op> <right val>
+                        if( (operator = get_op(tokens[op_loc])) < 0 ){
+                            fprintf(stderr, "ERROR: '%s' isn't a valid operator.\n", tokens[op_loc]);
+                            isValid = false;
+                        }
+                        if( isValid && set_compare_value( tokens[right_loc], type, &right_val) >= 0 ){
+                            (*set_array)[set_count-1].left_attr = left_attr_loc;
+                            (*set_array)[set_count-1].new_right_value = right_val;
+                            (*set_array)[set_count-1].operation = operator;
+                            (*set_array)[set_count-1].math_op = true;
+                            (*set_array)[set_count-1].left_val_set = false;
+                            (*set_array)[set_count-1].use_left_attr = true;
+                            (*set_array)[set_count-1].use_right_attr = false;
+                            (*set_array)[set_count-1].right_val_set = true;
+                        }else{
+                            isValid = false;
+                        }
+                    }
+                }else{ // equated = value <op> <right attr/val>
+                    int type = get_attr_type( table,(*set_array)[set_count-1].equated_attr );
+                    if( set_compare_value( tokens[left_loc], type, &left_val) >= 0 ){
+                        (*set_array)[set_count-1].new_left_value = left_val;
+                        (*set_array)[set_count-1].left_val_set = true;
+                        (*set_array)[set_count-1].use_left_attr = false;
+                        (*set_array)[set_count-1].use_right_attr = false;
+                        (*set_array)[set_count-1].right_val_set = false;
+                    }else{ // invalid value
+                        fprintf(stderr, "ERROR: '%s' is an invalid value.\n", tokens[left_loc]);
+                        isValid = false;
+                        break;
+                    }
+                    if( (operator = get_op( tokens[op_loc])) < 0 ){
+                        fprintf(stderr, "ERROR: '%s' is an invalid operator.\n", tokens[op_loc]);
+                        isValid = false;
+                        break;
+                    }
+                    if( is_attribute(tokens[right_loc]) ){ // equated = value <op> <right attr>
+                        int right_attr_loc;
+                        if( (right_attr_loc = get_attr_loc(table, tokens[right_loc])) < 0 ){
+                            fprintf(stderr, "ERROR: '%s' isn't an attribute in table '%s'\n", tokens[right_loc], table->table_name);
+                            isValid = false;
+                        }
+                        if( isValid && check_types( table->id, (*set_array)[set_count-1].equated_attr, right_attr_loc, false, -1, schemas) ){
+                            (*set_array)[set_count-1].right_attr = right_attr_loc;
+                            (*set_array)[set_count-1].new_left_value = left_val;
+                            (*set_array)[set_count-1].operation = operator;
+                            (*set_array)[set_count-1].math_op = true;
+                            (*set_array)[set_count-1].left_val_set = true;
+                            (*set_array)[set_count-1].use_left_attr = false;
+                            (*set_array)[set_count-1].use_right_attr = true;
+                            (*set_array)[set_count-1].right_val_set = false;
+                        }else{
+                            fprintf(stderr, "ERROR: '%s' isn't the same type as '%s'.\n", tokens[equated_loc], tokens[right_loc]);
+                            isValid = false;
+                        }
+                    }else{ // equated = value <op> <right value>
+                        if( set_compare_value(tokens[right_loc], type, &right_val) < 0 ){
+                            isValid = false;
+                        }else{
+                            (*set_array)[set_count-1].new_right_value = right_val;
+                            (*set_array)[set_count-1].new_left_value = left_val;
+                            (*set_array)[set_count-1].operation = operator;
+                            (*set_array)[set_count-1].math_op = true;
+                            (*set_array)[set_count-1].left_val_set = true;
+                            (*set_array)[set_count-1].use_left_attr = false;
+                            (*set_array)[set_count-1].use_right_attr = false;
+                            (*set_array)[set_count-1].right_val_set = true;
+                        }
+                    }
+                }
+            }
+            current_token += 6;
+        }else{ // unkonwn set operation
+            fprintf(stderr, "ERROR: unkonwn set operation.\n");
+            free( *set_array );
+            return -1;
         }
     }
     if(isValid == false){
-        free(*set_array);
         return 0;
     } else {
         return set_count;
@@ -421,36 +553,36 @@ int build_set( int token_count, char** tokens, table_catalog* table, set ** set_
       if no errors were encountered, o.w. return NULL
  */
 update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
-    if( strcmp(tokens[0],"delete") != 0 || strcmp(tokens[2],"set") !=0){ return NULL; }
+    if( strcasecmp(tokens[2],"set") != 0){ 
+        fprintf(stderr, "ERROR: update statment expects 'set' after table name not '%s'.\n", tokens[2]);
+        return NULL; 
+    }
     int current_token = 3;
     int where_idx = -1;
     while(current_token < token_count && where_idx == -1){
-        if(strcmp(tokens[current_token], "where") == 0){
+        if(strcasecmp(tokens[current_token], "where") == 0){
             where_idx = current_token;
         }
         current_token++;
     }
-    table_catalog* table = get_catalog_p(schemas, tokens[2]);
-    if( table == NULL ){ return NULL; }
-    set * set_part;
-    int num_attr = build_set(where_idx - 2, tokens + (2* sizeof(char *)), table, &set_part);
-    if(num_attr == 0){ return NULL; }
-    where_cmd * where = NULL;
+    table_catalog* table = get_catalog_p(schemas, tokens[1]);
+    if( table == NULL ){ 
+        fprintf(stderr, "ERROR: '%s' isn't a known table.\n", tokens[1]);
+        return NULL; 
+    }
+    update_cmd* command = init_update_cmd( table->id );
+    int set_tok_count = (where_idx > 0) ? where_idx - 2 : token_count - 2;
+    command->num_attributes = build_set(set_tok_count, tokens+2, table, &command->set_attrs, schemas);
+    if(command->num_attributes == 0){ 
+        destroy_update( command );
+        return NULL; 
+    }
     if( where_idx != -1 ){
         char ** table_name = malloc(sizeof(char*));
         table_name[0] = table->table_name;
-        where = build_where(table_name, 1, token_count-where_idx, tokens + (where_idx * sizeof(char *)), schemas);
+        command->conditions = build_where(table_name, 1, token_count-where_idx, tokens+where_idx, schemas);
+        free( table_name );
     }
-    char ** attributes_to_update = malloc(sizeof(char *) * num_attr);
-    for(int i = 0; i < num_attr; i++){
-        attributes_to_update[i] = get_attr_name(schemas, table->table_name, set_part[i].equated_attr);
-    }
-    update_cmd * command = malloc(sizeof(update_cmd));
-    command->table_id = table->id;
-    command->attributes_to_update = attributes_to_update;
-    command->conditions = where;
-    command->num_attributes = num_attr;
-    command->set_attrs = set_part;
     return command;
 }
 
@@ -611,9 +743,6 @@ insert_cmd* build_insert( int token_count, char** tokens, catalogs* schemas ){
         return NULL;
     }
 }
-/*
- *
- */
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -658,7 +787,7 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
     }
     int token_idx = 1;
     // Loop through each token creating conditional_cmds
-    for(token_idx; token_idx < token_count; token_idx+3){
+    for(token_idx; token_idx < token_count; token_idx+=3){
         int first_attr_loc = token_idx;
         int comparator_loc = token_idx+1;
         int other_attr_loc = token_idx+2;
@@ -713,12 +842,12 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
         }
 
         // next token can be either AND, OR, '\0'
-        if( strcasecmp(tokens[token_idx+3], "and") == 0 ){ // add AND node
+        if( token_idx+3 < token_count && strcasecmp(tokens[token_idx+3], "and") == 0 ){ // add AND node
             push_where_node(&top, AND, NULL);
-        }else if( strcasecmp(tokens[token_idx+3], "or") == 0 ){ // add OR node
+        }else if( token_idx+3 < token_count && strcasecmp(tokens[token_idx+3], "or") == 0 ){ // add OR node
             push_where_node(&top, OR, NULL);
-        }else if( strcasecmp(tokens[token_idx+3], "\0") == 0 ){ break; }
-        else{
+        }else if( token_idx+3 < token_count && strcasecmp(tokens[token_idx+3], "\0") == 0 ){ break; }
+        else if ( token_idx+3 < token_count ){
             fprintf(stderr, "'%s' is an unkonwn relational operator.\n", tokens[token_idx+3]);
             destroy_where_stack( &top );
             return NULL;
@@ -1225,6 +1354,20 @@ char* get_attr_name_from_token( char* attr_token ){
 }
 
 /*
+ * Based on the attribute token provided parse it and retrieve the
+ * corresponding table and attribute ids. If the attribute token
+ * doesn't have the table specified then it is assumed that the
+ * table_id paramater has the correct table id.
+ * @parm: table_id - return parameter for table id of attribute
+ * @parm: attr_tok - token which contains attribute name & maybe table name
+ * @parm: schemas - array of table catalogs
+ * @return: attribute id
+ */
+int get_attr_table_ids( char* attr_tok, int* table_id, catalogs* schemas ){
+    
+}
+
+/*
  * Tokenize the attribute token based on '.' and assume
  * the attribute name is in the last token.
  * @return the name of the attribute in the token which the user
@@ -1266,7 +1409,6 @@ int get_names_from_token( char* attr_token, char*** return_array ){
  *
  * Search through list of table ids for the provided attribute.
  *
- * @parm: table_ids - List of table schema ids to search through
  * @parm: num_tables - Number of tables in the list
  * @parm: par_tab_id - return parameter for table schema id where
                        attribute was found
@@ -1282,10 +1424,10 @@ int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_
     for( int i = 0; i<num_tables; i++ ){
         int temp = -1;
         table_catalog* tcat = &(schemas->all_tables[table_ids[i]]);
-        if( (temp = get_attr_loc( tcat, attr_name )) > 0 ){
+        if( (temp = get_attr_loc( tcat, attr_name )) >= 0 ){
             find_count++;
             found = temp;
-            *par_tab_id = temp;
+            *par_tab_id = tcat->id;
         }
     }
     if( found < 0 ){
@@ -1317,10 +1459,10 @@ int find_attribute_new( table_catalog** tables, int num_tables, int* tab_idx, ch
     int find_count = 0;
     for( int i = 0; i<num_tables; i++ ){
         int temp = -1;
-        if( (temp = get_attr_loc( tables[i], attr_name )) > 0 ){
+        if( (temp = get_attr_loc( tables[i], attr_name )) >= 0 ){
             find_count++;
             found = temp;
-            *tab_idx = temp;
+            *tab_idx = tables[i]->id;
         }
     }
     if( found < 0 ){
@@ -1360,16 +1502,39 @@ comparators get_comparator( char* c ){
 }
 
 /*
+ * Parse the given string which can only be 1 character long
+ * and return the corresponding math_operation type. if none
+ * return -1;
+ */
+math_operations get_op( char* c ){
+    math_operations op;
+    if( strcmp("+", c) == 0 ){
+        op = plus;
+    }else if( strcmp("-", c) == 0 ){
+        op = minus;
+    }else if( strcmp("*", c) == 0){
+        op = multiply;
+    }else if( strcmp("/", c) == 0){
+        op = divide;
+    }else{
+        op = -1;
+    }
+    return op;
+}
+
+/*
  * Check if the string's first and last character are quotes,
  * if it is a true/false or numerical value and if anything of
  * those are true then its a value and return false otherwise it is
  * an attribute and return true. Works for multitable attribute names
  * as well.
+ * @return: True if check is an attribute
+            False if check is a value
  */
 bool is_attribute( char* check ){
     char first = check[0];
     char last = check[strlen(check)-1];
-    return ( is_number(check) || (first == '"' && last == '"') || strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0);
+    return !( is_number(check) || (first == '"' && last == '"') || strcasecmp("true",check) == 0 || strcasecmp("false",check) == 0);
 }
 
 /*
@@ -1398,7 +1563,7 @@ int get_value_type( char* value, int attr_type ){
  * Check the value to confirm the type the value is matches
  * the attribute type and if not return -1. Otherwise based
  * on the type fill the corresponding return parameter with
- * the associated value and return 1 for success.
+ * the associated value and return 0 for success.
  */
 int set_compare_value( char* value, int type, union record_item* r_value ){
     bool null = (strcasecmp(value,"null") == 0);
@@ -1407,7 +1572,7 @@ int set_compare_value( char* value, int type, union record_item* r_value ){
     int result = 0;
     char *eptr;
     if( (val_type = get_value_type( value, type )) == -1 ){
-        fprintf(stderr, "'%s' type doesn't match the attribute type.\n", value);
+        fprintf(stderr, "ERROR: '%s' type doesn't match the attribute type.\n", value);
         return -1;
     }
     switch( type ){
@@ -1493,8 +1658,8 @@ void destroy_where_node(where_cmd* node){
 }
 
 void destroy_where_stack(where_cmd** node){
-    pop_where_node( node );
     if( !where_is_empty(*node) ){
+        pop_where_node( node );
         destroy_where_stack( node );
     }
 }
@@ -1550,4 +1715,85 @@ where_cmd* peek(where_cmd* top){
     }else{
         return NULL;
     }
+}
+
+// Builder Helper Functions
+select_cmd* init_select_cmd( int num_attrs, int num_tables, int num_orderby ){
+    select_cmd* select = (select_cmd*)malloc(sizeof(select_cmd));
+    select->attributes_to_select = (char**)malloc(sizeof(char*)*num_attrs);
+    // base allocation of attribute names
+    for( int i = 0; i<num_attrs; i++ ){
+        select->attributes_to_select[i] = malloc(0*sizeof(char)); // allows realloc to use pointer
+    }
+    select->selected = (int*)malloc(sizeof(int)*num_attrs);
+    select->table_match = (int*)malloc(sizeof(int)*num_attrs);
+    select->from_tables = (int*)malloc(sizeof(int)*num_tables);
+    select->conditions = NULL;  // built by separate command
+    select->orderby = (char**)malloc(sizeof(char*)*num_orderby);
+    // base allocation of attribute names for orderby
+    for( int i = 0; i<num_orderby; i++ ){
+        select->attributes_to_select[i] = malloc(0*sizeof(char)); // allows realloc to use pointer
+    }
+    select->num_attributes = num_attrs;
+    select->num_tables = num_tables;
+    select->num_orderby = num_orderby;
+    return select;
+}
+
+/*
+ * Increase size of contained arrays in the select command structure
+ */
+void manage_select( select_cmd* select, int num_attrs, int num_tables ){
+    select->attributes_to_select = (char**)realloc(select->attributes_to_select, num_attrs*sizeof(char*));
+    select->selected = (int*)realloc(select->selected, num_attrs*sizeof(int));
+    select->table_match = (int*)realloc(select->table_match, num_attrs*sizeof(int));
+    select->from_tables = (int*)realloc(select->table_match, num_tables*sizeof(int));
+    select->num_attributes = num_attrs;
+    select->num_tables = num_tables;
+}
+
+/*
+ * Assumes the orderby array has already been malloc'd.
+ */
+void add_orderby( select_cmd* select, int num_orderby ){
+    select->orderby = (char**)realloc(select->orderby, num_orderby*sizeof(char*));
+    select->num_orderby = num_orderby;
+}
+
+void destroy_select( select_cmd* select ){
+    free( select->selected );
+    free( select->table_match );
+    free( select->from_tables );
+    if( select->conditions != NULL ){
+        destroy_where_stack( &(select->conditions) );
+    }
+    for( int i = 0; i<select->num_attributes; i++){ // free attribute names
+        free( select->attributes_to_select[i] );
+    }
+    free( select->attributes_to_select );
+    for( int i = 0; i<select->num_orderby; i++ ){
+        free( select->orderby[i] );
+    }
+    free( select->orderby );
+}
+
+update_cmd* init_update_cmd( int table_id ){
+    update_cmd* update = (update_cmd*)malloc(sizeof(update_cmd));
+    update->table_id = table_id;
+    update->conditions = NULL;
+    update->set_attrs = (set *)malloc(sizeof(set));
+    return update;
+}
+
+/* 
+ * Increase size of set array
+ */
+void manage_sets( update_cmd* update, int num_ops ){
+    update->set_attrs = (set *)realloc(update->set_attrs, num_ops*sizeof(set));
+    update->num_attributes = num_ops;
+}
+
+void destroy_update( update_cmd* update ){
+    free( update->set_attrs );
+    free( update );
 }

@@ -675,9 +675,9 @@ int get_attr_loc(table_catalog *tcat, char *attr_name){
 	for( int i = 0; i<tcat->attribute_count; i++ ){
 		if( strcmp(tcat->attributes[i].name, attr_name) == 0 ){ loc = i; }
 	}
-	if( loc == -1 ){
-		fprintf(stderr, "ERROR: attribute doesn't exist in %s\n", tcat->table_name);
-	}
+	// if( loc == -1 ){
+	// 	fprintf(stderr, "ERROR: attribute doesn't exist in %s\n", tcat->table_name);
+	// }
 	return loc;
 }
 

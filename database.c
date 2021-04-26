@@ -72,6 +72,11 @@ int execute_query(char * query, union record_item *** result){
 	char delimit[] = " \t\r\n\0";
 	char *token = strtok(newStr, delimit);
 
+	if( schemas == NULL || schemas->table_count == 0 ){
+		fprintf(stderr, "ERROR: There are currently no tables in the database.\n");
+		return -1;
+	}
+
 	if( strcasecmp(token, "select") == 0 ){
 		res = parse_dml_query( query, result, schemas );
 	}else{
@@ -259,36 +264,6 @@ int run(int argc, char *argv[]){
 		//ignore whitespace by tokenizing
 		char delims[] = DELIMITER;
 		char *token = strtok(tokenString, delims);
-
-		// TODO: FOR PHASE 2, test with new records
-		if( strcasecmp(token, "test") == 0 ){
-			union record_item people[4][3];
-			people[0][0].i = 0;
-			memcpy( people[0][1].v, "James\0", 6*sizeof(char));
-			people[0][2].i = 23;
-
-			people[1][0].i = 1;
-			memcpy( people[1][1].v, "Kelsey\0", 7*sizeof(char));
-			people[1][2].i = 22;
-
-			people[2][0].i = 2;
-			memcpy( people[2][1].v, "Alex\0", 5*sizeof(char));
-			people[2][2].i = 20;
-
-			people[3][0].i = 3;
-			memcpy( people[3][1].v, "Varnit\0", 7*sizeof(char));
-			people[3][2].i = 20;
-			insert_record( 0, people[0] );
-			insert_record( 0, people[1] );
-			insert_record( 0, people[2] );
-			insert_record( 0, people[3] );
-			printf("INSERT!!\n");
-			union record_item *record;
-			union record_item key;
-			key.i = 0;
-			get_record( 0, &key, &record );
-			printf("HERE!\n");
-		}
 
 		// View All Current Table Schemas in Volatile Memory
 		if( strcasecmp(token, "print") == 0){

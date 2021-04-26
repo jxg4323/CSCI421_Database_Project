@@ -74,7 +74,6 @@ typedef struct where_node{
 
 typedef struct update_cmd_struct{
 	int num_attributes; // number of attributes to update
-	char** attributes_to_update;
 	int table_id;
 	set* set_attrs; // array of set operations to execute per record
 	where_cmd* conditions; // Have to be executed on per record basis
@@ -83,7 +82,10 @@ typedef struct update_cmd_struct{
 typedef struct select_cmd_struct{
 	int num_attributes;
 	int num_tables; // number of tables to select from
+	int num_orderby;
 	char** attributes_to_select; // not neccessarilly from the same table
+	int* selected;
+	int* table_match; // same length as 'selected' to inform which attribute goes to which table
 	bool wildcard;
 	int* from_tables; // if multiple perform cartesian product of tables to then act upon!!
 	where_cmd* conditions;
@@ -115,7 +117,7 @@ typedef struct delete_cmd_struct{
  */
 select_cmd* build_select( int token_count, char** tokens, catalogs* schemas );
 
-int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array);
+int build_set( int token_count, char** tokens, table_catalog* table, set ** set_array, catalogs* schemas );
 
 /*
  * Loop through the tokens provided and confirm their validity
@@ -228,7 +230,8 @@ int execute_delete( delete_cmd* delete, catalogs* schemas );
 // Helper Functions  --> GOOD
 void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType, comparators c, int fAttr, int oAttr, union record_item v1 );
 comparators get_comparator( char* c );
-int parser( char* statement, char** data );
+math_operations get_op( char* c );
+int parser( char* statement, char** data, bool use_commas );
 bool is_attribute( char* check );
 void backtrack_insert( int rec_count, insert_cmd* insert );
 int change_record_val( union record_item* old_val, union record_item new_val, int type );
@@ -250,6 +253,14 @@ int push_where_node(where_cmd** top, where_node_type type, conditional_cmd* cond
 int pop_where_node(where_cmd** top);
 int where_is_empty(where_cmd* top);
 where_cmd* peek(where_cmd* top);
+// Builder Helper Functions
+void destroy_select( select_cmd* select );
+select_cmd* init_select_cmd( int num_attrs, int num_tables, int num_orderby );
+void manage_select( select_cmd* select, int num_attrs, int num_tables );
+void add_orderby( select_cmd* select, int num_orderby );
+update_cmd* init_update_cmd( int table_id );
+void manage_sets( update_cmd* update, int num_ops );
+void destroy_update( update_cmd* update );
 
 
 #endif

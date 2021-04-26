@@ -398,6 +398,7 @@ int remove_record( int table_id, union record_item * key_values ){
 						memcpy(p_data->data[k], p_data->data[k+1], 
 						       sizeof(union record_item) * t_data->num_attr);
 					}
+          p_data->num_tuples--;
 				}
 				t_data->table_size--;
                 return 0;
