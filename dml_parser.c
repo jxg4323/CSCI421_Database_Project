@@ -898,20 +898,52 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
  * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
-union record_item** cartesian_product( int num_tables, int* table_ids, int *total_records, catalogs* schemas ){
-    union record_tem** cart;
-    int cart_size = 0;
+union record_item** cartesian_product( int num_tables, int* table_ids, int *total_records, int* record_size, catalogs* schemas ){
+    union record_item** cart;
     if( num_tables == 1 ){
         *total_records = get_records( schemas->all_tables[table_ids[0]].storage_manager_loc, &cart );
+        *record_size = schemas->all_tables[table_ids[0]].attribute_count;
         return cart;
     }
-    for( int i = 0; i < num_tables; i++ ){
-        cart_size += schemas->all_tables[table_ids[i]].attribute_count;
-    }
-    cart = (union record_item**)malloc(sizeof(union record_item*));
-    for( int i = 0; i<num_tables; i++){
-        table_catalog* table = &(schemas->all_tables[table_ids[i]]);
+    cart = malloc(0*sizeof(union record_item*));
+    int cart_size = 0; // sum of attribute counts for each table
+    int* rec_lengths = (int*)malloc(num_tables*sizeof(int));
+    int* tab_sizes = (int*)malloc(num_tables*sizeof(int));
+    union record_item*** tab_records = malloc(num_tables*sizeof(union record_item**));
+    union record_item** current_row = malloc(num_tables*sizeof(union record_item*));
+    int count = 1;
 
+    for( int i = 0; i < num_tables; i++ ){
+        rec_lengths[i] = schemas->all_tables[table_ids[i]].attribute_count;
+        cart_size += schemas->all_tables[table_ids[i]].attribute_count;
+        tab_sizes[i] = get_records(schemas->all_tables[table_ids[i]].storage_manager_loc, &(tab_records[i]));
+    }
+
+    build_cart_product( &cart, &count, tab_records, current_row, tab_sizes, rec_lengths, num_tables, 0, cart_size);
+    *total_records = count-1;
+    *record_size = cart_size;
+    return cart;
+}
+
+void build_cart_product( union record_item*** cart, int* count, union record_item*** tab_records, union record_item** current_row, int* tab_sizes, int* rec_lengths, int num_tables, int times, int cart_size ){
+    int i,j,s,c;
+
+    if(times==num_tables){ //current row is full add to cart
+        (*cart) = (union record_item**)realloc(*cart, (*count)*sizeof(union record_item*)); // increase cart size
+        (*cart)[*count-1] = (union record_item*)malloc(cart_size*sizeof(union record_item)); // allocate memory for the current row in the cart
+        c = 0;
+        for(i = 0; i<times; i++){
+            for( s = 0; s<rec_lengths[i]; s++){
+                (*cart)[*count-1][c] = current_row[i][s];
+                c++;
+            }
+        }
+        (*count)++;
+    }else{
+        for(j = 0; j<tab_sizes[times]; j++){
+            current_row[times] = tab_records[times][j]; // CURRENTLY only copies pointers not contents
+            build_cart_product(cart,count,tab_records,current_row,tab_sizes,rec_lengths,num_tables,times+1,cart_size);
+        }
     }
 }
 
@@ -971,10 +1003,43 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  * @return 2d array result with success and
        NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* select, catalogs* shcemas ){
-    union record_item** result_table;
-
-
+union record_item** execute_select( select_cmd* select, catalogs* schemas ){
+    int total = 0, rec_size = 0;
+    union record_item** result_table = cartesian_product( select->num_tables,select->from_tables,&total,&rec_size, schemas );
+    for( int i = 0; i<(total); i++ ){
+        for( int j = 0; j<rec_size; j++ ){
+            int type = 0;
+            if( j < 4 ){
+                type = (schemas->all_tables[0].attributes[j].type);
+            }else if( j >= 4 && j < 7 ){
+                type = (schemas->all_tables[2].attributes[j-4].type);
+            }else{
+                type = (schemas->all_tables[1].attributes[j-7].type);
+            }
+            switch( type ){
+                case 0: //int
+                    printf("%10i", result_table[i][j].i);
+                    break;
+                case 1: //double
+                    printf("%10f", result_table[i][j].d);
+                    break;
+                case 2: //boolean
+                    printf("%10s", result_table[i][j].b ? "TRUE" : "FALSE");
+                    break;
+                case 3: //char
+                    printf("%10s", result_table[i][j].c);
+                    break;
+                case 4: //varchar
+                    printf("%10s", result_table[i][j].v);
+                    break;
+            }
+        }
+        printf("\n");
+    }
+    for( int i = 0; i<total; i++){
+        free( result_table[i] );
+    }
+    free( result_table );
 }
 
 /*

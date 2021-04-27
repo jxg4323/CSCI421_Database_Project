@@ -194,7 +194,7 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
  * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
-union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ); 
+union record_item** cartesian_product( int num_tables, int* table_ids, int* total_records, int* record_size, catalogs* schemas ); 
 
 /*
  * Execute the where conditionals with the values from provided record.
@@ -210,7 +210,7 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  * @return 2d array result with success and
  		   NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* select, catalogs* shcemas );
+union record_item** execute_select( select_cmd* select, catalogs* schemas );
 
 /*
  *
@@ -232,6 +232,7 @@ void set_condition_info( conditional_cmd* cond, int fTid, int oTid, int attrType
 comparators get_comparator( char* c );
 math_operations get_op( char* c );
 int parser( char* statement, char** data, bool use_commas );
+void build_cart_product( union record_item*** cart, int* count, union record_item*** tab_records, union record_item** current_row, int* tab_sizes, int* rec_lengths, int num_tables, int times, int cart_size );
 bool is_attribute( char* check );
 void backtrack_insert( int rec_count, insert_cmd* insert );
 int change_record_val( union record_item* old_val, union record_item new_val, int type );
