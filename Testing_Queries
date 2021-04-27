@@ -10,7 +10,6 @@ create table Person(
 	primarykey( ID NAME )
 );
 
-alter table Person add LastName char(25) default "Green";
 
 create table sex(
 	SEXID integer notnull primarykey,
@@ -20,7 +19,27 @@ create table sex(
 	foreignkey( PartnerName ) references Person( NAME )
 );
 
-alter table sex add ORGASM_COUNT integer default 5;
+create table Test(
+	ID integer notnull primarykey,
+	FURTHER varchar(100) notnull,
+	DUMBNESS integer primarykey,
+	primarykey( ID )
+);
+
+insert into Person values( 0 "James" "CompSci" 23 ),
+                         ( 1 "Kelsey" "Software" 21 ),
+                         ( 2 "Alex" "CompSci" 19 ),
+                         ( 3 "Varnit" "Engineer" 20);
+
+
+insert into Test values( 4 "somestuff" 1 ),
+					   ( 5 "others" 9 ),
+					   ( 18 "more things" 10 ),
+					   ( 9 "wishful" 8 );
+
+insert into sex values( 6 "doggy" "Marissa" ),
+					  ( 7 "reverse cowgirl" "Zoey"); 
+
 
 create table Funny(
 	FID integer notnull,
@@ -30,12 +49,9 @@ create table Funny(
 	unique( JOKE LAUGHTER )
 );
 
-create table Test(
-	ID integer notnull primarykey,
-	FURTHER varchar(100) notnull,
-	DUMBNESS integer primarykey,
-	primarykey( ID )
-);
+
+alter table sex add ORGASM_COUNT integer default 5;
+alter table Person add LastName char(25) default "Green";
 
 
 Table Person:

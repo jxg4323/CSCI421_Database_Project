@@ -647,6 +647,9 @@ update_cmd* build_update( int token_count, char** tokens, catalogs* schemas ){
         table_name[0] = table->table_name;
         command->conditions = build_where(table_name, 1, token_count-where_idx, tokens+where_idx, schemas);
         free( table_name );
+        if( command->conditions == NULL ){
+            return NULL;
+        }
     }
     return command;
 }
@@ -922,6 +925,17 @@ union record_item** cartesian_product( int num_tables, int* table_ids, int *tota
     build_cart_product( &cart, &count, tab_records, current_row, tab_sizes, rec_lengths, num_tables, 0, cart_size);
     *total_records = count-1;
     *record_size = cart_size;
+    for( int i=0; i<num_tables; i++ ){
+        int rec_count = tab_sizes[i];
+        for( int j = 0; j<rec_lengths[i]; j++ ){
+            free( tab_records[i][j] );
+        }
+        free( tab_records[i] );
+    }
+    free( tab_records );
+    free( current_row );
+    free( rec_lengths );
+    free( tab_sizes );
     return cart;
 }
 
@@ -961,7 +975,7 @@ void build_cart_product( union record_item*** cart, int* count, union record_ite
  * @return: 0 if record evaluates the where conditionals to true and
       -1 otherwirse.
  */
-int check_where_statement( where_cmd* where, union record_item* record, int record_size, catalogs* schemas ){
+int check_where_statement( where_cmd* where, union record_item* record, int record_size, int* tab_order, int num_tables, catalogs* schemas ){
     if( where == NULL ){ // if no where conditions then all records pass.
         return 0;
     }
@@ -969,6 +983,7 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
     // Assume only one table involved in query
     int table_id = where->cond->first_table_id;
     where_cmd* temp = where;
+    bool multi = (num_tables > 1) ? true : false;
     bool result_val = false;  // assume record doesn't meet condition
     bool last_val = false;
     while( !where_is_empty(temp) ){
@@ -977,18 +992,18 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
                 last_val = result_val;
                 // move to next condition
                 temp = temp->link;
-                eval_condition( temp->cond, record, schemas );
+                eval_multitable_condition( temp->cond, record, tab_order, num_tables, schemas );
                 result_val = last_val && temp->cond->result_value;
                 break;
             case OR:
                 last_val = result_val;
                 // move to next condition
                 temp = temp->link;
-                eval_condition( temp->cond, record, schemas );
+                eval_multitable_condition( temp->cond, record, tab_order, num_tables, schemas );
                 result_val = last_val || temp->cond->result_value;
                 break;
             case COND:
-                eval_condition( temp->cond, record, schemas );
+                eval_multitable_condition( temp->cond, record, tab_order, num_tables, schemas );
                 result_val = temp->cond->result_value;
                 break;
         }
@@ -1006,35 +1021,19 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
 union record_item** execute_select( select_cmd* select, catalogs* schemas ){
     int total = 0, rec_size = 0;
     union record_item** result_table = cartesian_product( select->num_tables,select->from_tables,&total,&rec_size, schemas );
-    for( int i = 0; i<(total); i++ ){
-        for( int j = 0; j<rec_size; j++ ){
-            int type = 0;
-            if( j < 4 ){
-                type = (schemas->all_tables[0].attributes[j].type);
-            }else if( j >= 4 && j < 7 ){
-                type = (schemas->all_tables[2].attributes[j-4].type);
+    int* type_arr = type_array( select, schemas, rec_size );
+
+    //TODO: print header
+    for( int i = 0; i<total; i++ ){
+        // check if record matches where condition
+        if( check_where_statement( select->conditions, result_table[i], rec_size, select->from_tables, select->num_tables, schemas ) == 0 ){
+            if( select->wildcard ){
+                print_record( result_table[i], rec_size, type_arr );
             }else{
-                type = (schemas->all_tables[1].attributes[j-7].type);
+                print_selected( result_table[i], rec_size, type_ar, select, schemas );
             }
-            switch( type ){
-                case 0: //int
-                    printf("%10i", result_table[i][j].i);
-                    break;
-                case 1: //double
-                    printf("%10f", result_table[i][j].d);
-                    break;
-                case 2: //boolean
-                    printf("%10s", result_table[i][j].b ? "TRUE" : "FALSE");
-                    break;
-                case 3: //char
-                    printf("%10s", result_table[i][j].c);
-                    break;
-                case 4: //varchar
-                    printf("%10s", result_table[i][j].v);
-                    break;
-            }
+            printf("\n");
         }
-        printf("\n");
     }
     for( int i = 0; i<total; i++){
         free( result_table[i] );
@@ -1080,7 +1079,7 @@ int execute_update( update_cmd* update, catalogs* schemas ){
     for( int i = 0; i<num_records; i++ ){
         union record_item* record = all_records[i];
         // TODO: issue when altering a primary/foreign key
-        if( check_where_statement( update->conditions, record, record_size, schemas ) == 0 ){
+        if( check_where_statement( update->conditions, record, record_size, &(update->table_id), 1, schemas ) == 0 ){
             // loop through each set operation and alter the record
             for(int j = 0; j<update->num_attributes; j++){
                 set* setter = &(update->set_attrs[j]);
@@ -1149,7 +1148,7 @@ int execute_delete( delete_cmd* delete, catalogs* schemas ){
     union record_item** all_records;
     if( (num_records = get_records( delete->table_id,&all_records )) < 0 ){ return -1; }
     for( int i = 0; i<num_records; i++ ){
-        if( check_where_statement( delete->conditions, all_records[i], record_size, schemas ) == 0 ){
+        if( check_where_statement( delete->conditions, all_records[i], record_size, &(delete->table_id), 1, schemas ) == 0 ){
             result = remove_record( delete->table_id,all_records[i] );
         }
         if( result < 0 ){ break; }
@@ -1291,18 +1290,32 @@ int exec_math_op( union record_item* result, union record_item left, union recor
 }
 
 /*
- * Evaluate conditional_cmd based on a single record, store the
- * result of the condition in the command structure's result_value.
+ * Evaluate the conditional command based on the record provided.
+ *
+ * @parm: record - assumed to be a combination of each tables records
+                   in the provided order.
+ * @parm: tab_order - order of the table records
+ * @return: -1 if error otherwise 0, the result of condition will be
+            stored in the structure.
  */
-int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas ){
+int eval_multitable_condition( conditional_cmd* cond, union record_item* record, int* tab_order, int num_tabs, catalogs* schemas ){
     int size = -1;
-    if( cond->attr_type == 3 || cond->attr_type == 4 ){
+    int first_move = 0;
+    int other_move = 0;
+    for( int i = 0; i<num_tabs && cond->first_table_id != tab_order[i]; i++ ){
+        first_move += schemas->all_tables[tab_order[i]].attribute_count;
+    }
+    for( int i = 0; i<num_tabs && cond->other_table_id != tab_order[i]; i++ ){
+        other_move += schemas->all_tables[tab_order[i]].attribute_count;
+    }
+    if( (cond->attr_type == 3 || cond->attr_type == 4) && cond->first_attr != -1 ){
         size = schemas->all_tables[cond->first_table_id].attributes[cond->first_attr].char_length;
     }
-    if( cond->other_attr == -1 ){ // then evaluate with stored cond->value
-        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr], cond->value);
-    }else{  // evaluate based on other attribute value in record
-        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr], record[cond->other_attr]);
+
+    if( cond->other_attr == -1 ){
+        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr+first_move], cond->value );
+    }else{
+        cond->result_value = compare_condition( cond->comparator, cond->attr_type, size, record[cond->first_attr+first_move], record[cond->other_attr+other_move] );
     }
     return 0;
 }
@@ -1536,11 +1549,11 @@ int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_
         }
     }
     if( found < 0 ){
-        fprintf(stderr, "None of the tables contain an attribute '%s'\n.", attr_name);
+        fprintf(stderr, "ERROR: None of the tables contain an attribute '%s'\n.", attr_name);
         return -1;
     }
     if( find_count > 1 ){
-        fprintf(stderr, "Multiple tables have an attribute named '%s'\n.", attr_name);
+        fprintf(stderr, "ERROR: Multiple tables have an attribute named '%s'\n.", attr_name);
         return -1;
     }
     return found;
@@ -1571,11 +1584,11 @@ int find_attribute_new( table_catalog** tables, int num_tables, int* tab_idx, ch
         }
     }
     if( found < 0 ){
-        fprintf(stderr, "None of the tables contain an attribute '%s'\n.", attr_name);
+        fprintf(stderr, "ERROR: None of the tables contain an attribute '%s'\n.", attr_name);
         return -1;
     }
     if( find_count > 1 ){
-        fprintf(stderr, "Multiple tables have an attribute named '%s'\n.", attr_name);
+        fprintf(stderr, "ERROR: Multiple tables have an attribute named '%s'\n.", attr_name);
         return -1;
     }
     return found;
@@ -1944,6 +1957,23 @@ void destory_insert( insert_cmd* insert ){
     free( insert );
 }
 
+int* type_array( select_cmd* select, catalogs* schemas, int num_attributes ){
+    if(select->wildcard){
+        int* types = (int*)malloc(num_attributes*sizeof(int));
+        int c = 0;
+        for(int i = 0; i<select->num_tables; i++){
+            int attr_count = schemas->all_tables[select->from_tables[i]].attribute_count;
+            for(int j = 0; j<attr_count; j++){
+                types[c] = schemas->all_tables[select->from_tables[i]].attributes[j].type;
+                c++;
+            }
+        }
+        return types;
+    }else{
+        return select->table_match;
+    }
+}
+
 void print_table( table_catalog* table ){
     union record_item** all_records;
     int num_records = get_records( table->storage_manager_loc, &all_records );
@@ -1981,4 +2011,69 @@ void print_table( table_catalog* table ){
         free( all_records[i] );
     }
     free( all_records );
+}
+
+void print_record( union record_item* record, int rec_size, int* type_arr ){
+    for( int j = 0; j<rec_size; j++ ){
+        int type = type_arr[j];
+        switch( type ){
+            case 0: //int
+                printf("%10i", record[j].i);
+                break;
+            case 1: //double
+                printf("%10f", record[j].d);
+                break;
+            case 2: //boolean
+                printf("%10s", record[j].b ? "TRUE" : "FALSE");
+                break;
+            case 3: //char
+                printf("%10s", record[j].c);
+                break;
+            case 4: //varchar
+                printf("%10s", record[j].v);
+                break;
+        }
+    }
+}
+
+void print_selected( union record_item* record, int rec_size, int* type_arr, select_cmd* select, catalogs* schemas ){
+    for( int i = 0; i<select->num_attributes; i++ ){
+        int loc = 0;
+        for( int j = 0; j<select->num_attributes && select->table_match[i] != select->from_tables[j]; j++ ){
+            select->selected[i] += schemas->all_tables[select->table_match[i]].attribute_count;
+        }
+    }
+    for( int j = 0; j<rec_size; j++ ){
+        if( is_selected( select->selected, select->num_attributes, j) ){
+            int type = type_arr[j];
+            switch( type ){
+                case 0: //int
+                    printf("%10i", record[j].i);
+                    break;
+                case 1: //double
+                    printf("%10f", record[j].d);
+                    break;
+                case 2: //boolean
+                    printf("%10s", record[j].b ? "TRUE" : "FALSE");
+                    break;
+                case 3: //char
+                    printf("%10s", record[j].c);
+                    break;
+                case 4: //varchar
+                    printf("%10s", record[j].v);
+                    break;
+            }
+        }
+    }
+}
+
+bool is_selected( int* selected, int num_selected, int attr_loc ){
+    bool result = false;
+    for(int i = 0; i<num_selected; i++ ){
+        if( selected[i] == attr_loc ){ 
+            result = true; 
+            break;
+        }
+    }
+    return result;
 }

@@ -203,7 +203,7 @@ union record_item** cartesian_product( int num_tables, int* table_ids, int* tota
  * @return: 0 if record evaluates the where conditionals to true and
 			-1 otherwirse.
  */
-int check_where_statement( where_cmd* where, union record_item* record, int record_size, catalogs* schemas );
+int check_where_statement( where_cmd* where, union record_item* record, int record_size, int* tab_order, int num_tables, catalogs* schemas );
 
 /*
  * 
@@ -239,13 +239,14 @@ int change_record_val( union record_item* old_val, union record_item new_val, in
 int exec_math_op( union record_item* result, union record_item left, union record_item right, math_operations op, int type, int lsize, int rsize);
 char* get_attr_name_from_token( char* attr_token );
 int get_names_from_token( char* attr_token, char*** return_array );
-int eval_condition( conditional_cmd* cond, union record_item* record, catalogs* schemas );
 bool compare_condition( comparators comp, int type, int size, union record_item left, union record_item right );
+int eval_multitable_condition( conditional_cmd* cond, union record_item* record, int* tab_order, int num_tabs, catalogs* schemas );
 bool check_types( int t_id, int first, int other, bool multitable, int ot_id, catalogs* schemas );
 int find_attribute( int* table_ids, int num_tables, int* par_tab_id, char* attr_name, catalogs* schemas );
 int find_attribute_new( table_catalog** tables, int num_tables, int* tab_idx, char* attr_name );
 int set_compare_value( char* value, int type, union record_item* r_value );
 int get_value_type( char* value, int attr_type );
+int* type_array( select_cmd* select, catalogs* schemas, int num_attributes );
 where_cmd* new_where_node();
 conditional_cmd* new_condition_cmd();
 void destroy_where_node(where_cmd* node);
@@ -268,5 +269,8 @@ insert_cmd* init_insert_cmd( int table_id, int num_records, int rec_size );
 void destory_insert( insert_cmd* insert );
 // Printing Helper Funcitons
 void print_table( table_catalog* table );
+void print_record( union record_item* record, int rec_size, int* type_array );
+void print_selected( union record_item* record, int rec_size, int* type_arr, select_cmd* select, catalogs* schemas );
+bool is_selected( int* selected, int num_selected, int attr_loc );
 
 #endif
