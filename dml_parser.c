@@ -15,11 +15,16 @@ int parser( char* statement, char** data, bool use_commas ){
     char *end_str = temp;
     char *token;
     char* delim;
+    bool quotes = false;
     if( use_commas ){ delim = " \t\r\n();"; }
     else{ delim = DELIMITER; }
 
     while ( (token = strtok_r(end_str, delim, &end_str)) )
     {
+        quotes = false;
+        if( strcmp(delim, "\"") == 0){
+            quotes = true;
+        }
         // reset delimiter
         if( use_commas ){ delim = " \t\r\n();"; }
         else{ delim = DELIMITER; }
@@ -66,18 +71,34 @@ int parser( char* statement, char** data, bool use_commas ){
             data[i+1] = (char *)malloc(sizeof(char));
             memset(data[i+1], '\0', sizeof(char));
             i++, total++;
-        }else if(use_commas && strlen(end_str) > 0 && strcasecmp(next, "where") == 0 ){
-            data[i] = (char *)malloc((str_len+1)*sizeof(char));
-            memset(data[i], '\0', (str_len+1)*sizeof(char));
-            strcpy(data[i], token);
+        }else if(use_commas && strlen(end_str) > 0 && next!= NULL && strcasecmp(next, "where") == 0 ){
+            if( quotes ){
+                data[i] = (char *)malloc((str_len+3)*sizeof(char));
+                memset(data[i], '\0', (str_len+3)*sizeof(char));
+                strcat(data[i], "\"");
+                strcat(data[i], token);
+                strcat(data[i], "\"");
+            }else{
+                data[i] = (char *)malloc((str_len+1)*sizeof(char));
+                memset(data[i], '\0', (str_len+1)*sizeof(char));
+                strcpy(data[i], token);
+            }
             // add empty token after
             data[i+1] = (char *)malloc(sizeof(char));
             memset(data[i+1], '\0', sizeof(char));
             i++, total++;
         }else{
-            data[i] = (char *)malloc((str_len+1)*sizeof(char));
-            memset(data[i], '\0', (str_len+1)*sizeof(char));
-            strcpy(data[i], token);
+            if( quotes ){
+                data[i] = (char *)malloc((str_len+3)*sizeof(char));
+                memset(data[i], '\0', (str_len+3)*sizeof(char));
+                strcat(data[i], "\"");
+                strcat(data[i], token);
+                strcat(data[i], "\"");
+            }else{
+                data[i] = (char *)malloc((str_len+1)*sizeof(char));
+                memset(data[i], '\0', (str_len+1)*sizeof(char));
+                strcpy(data[i], token);
+            }
         }
     
         i++, total++;
@@ -105,19 +126,22 @@ int parse_dml_statement( char * statement, catalogs* schemas ){
     char* com_type = strtok(temp, DELIMITER);
     int total = 0;
     int res = 0;
+
     if( strcasecmp(com_type, "insert") == 0 ){
         if( (total = parser( statement, data, false )) < 0 ){ return -1; }
         insert_cmd* insert = build_insert( total, data, schemas );
         // exec
         if( insert != NULL ){
             res = execute_insert( insert,schemas );
+            print_table( &(schemas->all_tables[insert->table_id]) );
         }
     }else if( strcasecmp(com_type, "update") == 0 ){
         if( (total = parser( statement, data, true )) < 0 ){ return -1; }
         update_cmd* update = build_update( total, data, schemas );
         // exec
         if( update != NULL ){
-            //res = execute_update( update, schemas );
+            res = execute_update( update, schemas );
+            print_table( &(schemas->all_tables[update->table_id]) );
         }
     }else if( strcasecmp(com_type, "delete") == 0 ){
         if( (total = parser( statement, data, false )) < 0 ){ return -1; }
@@ -125,6 +149,7 @@ int parse_dml_statement( char * statement, catalogs* schemas ){
         // exec
         if( delete != NULL ){
             res = execute_delete( delete, schemas );
+            print_table( &(schemas->all_tables[delete->table_id]) );
         }
     }else{
         fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);
@@ -377,6 +402,17 @@ int build_set( int token_count, char** tokens, table_catalog* table, set ** set_
                 isValid = false; 
             } else {
                 (*set_array)[set_count-1].equated_attr = attr_loc;
+                if( check_prim_key( table, attr_loc ) ){ // primary key check
+                    fprintf(stderr, "ERROR: '%s' is a member of the primary key and can't be altered.\n", tokens[equated_loc]);
+                    isValid = false;
+                }
+                // foreign key check
+                int* tmp = (int *)malloc(table->foreign_size*sizeof(int));
+                if( check_foreign_relations( table, attr_loc, tmp ) > 0 ){
+                    fprintf(stderr, "ERROR: '%s' is apart of a foreign key relation.\n", tokens[equated_loc]);
+                    isValid = false;
+                }
+                free( tmp );
                 if(strcmp(tokens[equals_loc],"=") != 0){
                     fprintf(stderr, "ERROR: expected an '=' after '%s' not '%s'.\n", tokens[equated_loc], tokens[equals_loc]);
                     isValid = false;
@@ -431,6 +467,17 @@ int build_set( int token_count, char** tokens, table_catalog* table, set ** set_
                 isValid = false; 
             } else {
                 (*set_array)[set_count-1].equated_attr = attr_loc;
+                if( check_prim_key( table, attr_loc ) ){
+                    fprintf(stderr, "ERROR: '%s' is a member of the primary key and can't be altered.\n", tokens[equated_loc]);
+                    isValid = false;
+                }
+                // foreign key check
+                int* tmp = (int *)malloc(table->foreign_size*sizeof(int));
+                if( check_foreign_relations( table, attr_loc, tmp ) > 0 ){
+                    fprintf(stderr, "ERROR: '%s' is apart of a foreign key relation.\n", tokens[equated_loc]);
+                    isValid = false;
+                }
+                free( tmp );
                 if(strcmp(tokens[equals_loc],"=") != 0){
                     fprintf(stderr, "ERROR: expected an '=' after '%s' not '%s'.\n", tokens[equated_loc], tokens[equals_loc]);
                     isValid = false;
@@ -952,7 +999,8 @@ int execute_update( update_cmd* update, catalogs* schemas ){
     if( (num_records = get_records( update->table_id,&all_records )) < 0 ){ return -1; }
     for( int i = 0; i<num_records; i++ ){
         union record_item* record = all_records[i];
-        if( check_where_statement( update->conditions, record, record_size, schemas ) ){
+        // TODO: issue when altering a primary/foreign key
+        if( check_where_statement( update->conditions, record, record_size, schemas ) == 0 ){
             // loop through each set operation and alter the record
             for(int j = 0; j<update->num_attributes; j++){
                 set* setter = &(update->set_attrs[j]);
@@ -994,9 +1042,17 @@ int execute_update( update_cmd* update, catalogs* schemas ){
                 }
             }
             // update the altered record
-            if( (result = update_record(tcat->storage_manager_loc,record)) < 0 ){ return -1; }  
+            if( (result = update_record(tcat->storage_manager_loc,record)) < 0 ){ 
+                result = -1;
+                break; 
+            }  
         }
     }
+    for( int i = 0; i<num_records; i++){
+        free( all_records[i] );
+    }
+    free( all_records );
+    return result;
 }
 
 /*
@@ -1013,10 +1069,13 @@ int execute_delete( delete_cmd* delete, catalogs* schemas ){
     union record_item** all_records;
     if( (num_records = get_records( delete->table_id,&all_records )) < 0 ){ return -1; }
     for( int i = 0; i<num_records; i++ ){
-        if( check_where_statement( delete->conditions, all_records[i], record_size, schemas ) ){
+        if( check_where_statement( delete->conditions, all_records[i], record_size, schemas ) == 0 ){
             result = remove_record( delete->table_id,all_records[i] );
         }
         if( result < 0 ){ break; }
+    }
+    for( int i = 0; i<num_records; i++){
+        free( all_records[i] );
     }
     free( all_records );
     return result;
@@ -1196,10 +1255,10 @@ bool compare_condition( comparators comp, int type, int size, union record_item 
                     result = (left.b == right.b);
                     break;
                 case 3: // char
-                    result = (strncasecmp(left.c, right.c, size) == 0);
+                    result = (strncasecmp(left.c, right.c, strlen(right.c)) == 0);
                     break;
                 case 4: // varchar
-                    result = (strncasecmp(left.v, right.v, size) == 0);
+                    result = (strncasecmp(left.v, right.v, strlen(right.v)) == 0);
                     break;
             }
             break;
@@ -1253,10 +1312,10 @@ bool compare_condition( comparators comp, int type, int size, union record_item 
                     result = (left.b <= right.b);
                     break;
                 case 3: // char
-                    result = (strncasecmp(left.c, right.c, size) <= 0);
+                    result = (strncasecmp(left.c, right.c, strlen(right.c)) <= 0);
                     break;
                 case 4: // varchar
-                    result = (strncasecmp(left.v, right.v, size) <= 0);
+                    result = (strncasecmp(left.v, right.v, strlen(right.v)) <= 0);
                     break;
             }
             break;
@@ -1272,10 +1331,10 @@ bool compare_condition( comparators comp, int type, int size, union record_item 
                     result = (left.b >= right.b);
                     break;
                 case 3: // char
-                    result = (strncasecmp(left.c, right.c, size) >= 0);
+                    result = (strncasecmp(left.c, right.c, strlen(right.c)) >= 0);
                     break;
                 case 4: // varchar
-                    result = (strncasecmp(left.v, right.v, size) >= 0);
+                    result = (strncasecmp(left.v, right.v, strlen(right.v)) >= 0);
                     break;
             }
             break;
@@ -1291,10 +1350,10 @@ bool compare_condition( comparators comp, int type, int size, union record_item 
                     result = (left.b != right.b);
                     break;
                 case 3: // char
-                    result = (strncasecmp(left.c, right.c, size) != 0);
+                    result = (strncasecmp(left.c, right.c, strlen(right.c)) != 0);
                     break;
                 case 4: // varchar
-                    result = (strncasecmp(left.v, right.v, size) != 0);
+                    result = (strncasecmp(left.v, right.v, strlen(right.v)) != 0);
                     break;
             }
             break;
@@ -1331,20 +1390,6 @@ char* get_attr_name_from_token( char* attr_token ){
     }
     free( temp );
     return attr_name;
-}
-
-/*
- * Based on the attribute token provided parse it and retrieve the
- * corresponding table and attribute ids. If the attribute token
- * doesn't have the table specified then it is assumed that the
- * table_id paramater has the correct table id.
- * @parm: table_id - return parameter for table id of attribute
- * @parm: attr_tok - token which contains attribute name & maybe table name
- * @parm: schemas - array of table catalogs
- * @return: attribute id
- */
-int get_attr_table_ids( char* attr_tok, int* table_id, catalogs* schemas ){
-    
 }
 
 /*
@@ -1552,7 +1597,7 @@ int set_compare_value( char* value, int type, union record_item* r_value ){
     int result = 0;
     char *eptr;
     if( (val_type = get_value_type( value, type )) == -1 ){
-        fprintf(stderr, "ERROR: '%s' type doesn't match the attribute type.\n", value);
+        fprintf(stderr, "ERROR: '%s' type doesn't match the attribute's type %s.\n", value, type_string( type ));
         return -1;
     }
     switch( type ){
@@ -1570,12 +1615,16 @@ int set_compare_value( char* value, int type, union record_item* r_value ){
             else { r_value->b = false; }
             break;
         case 3: // char
-            if( null ){ memset(r_value->c, '\0', (str_len)*sizeof(char)); }
+            if( null ){ memset(r_value->c, '\0', (str_len)*sizeof(char)); } //TODO: come back and make similar to varchar
             else{ strcpy(r_value->c, value); }
             break;
         case 4: // varchar
             if( null ){ memset(r_value->v, '\0', (str_len)*sizeof(char)); }
-            else{ strcpy(r_value->v, value); }
+            else{ 
+                memset(r_value->v, '\0', (str_len)*sizeof(char));
+                strncpy(r_value->v, value+1, strlen(value)-2); 
+                strcat(r_value->v, "\0");
+            }
             break;
         default:
             fprintf(stderr, "ERROR: unknown type for '%s'\n", value);
@@ -1813,4 +1862,43 @@ void destory_insert( insert_cmd* insert ){
     }
     free( insert->records );
     free( insert );
+}
+
+void print_table( table_catalog* table ){
+    union record_item** all_records;
+    int num_records = get_records( table->storage_manager_loc, &all_records );
+    // print header
+    printf("Table: %s\n", table->table_name);
+    for(int i = 0; i<table->attribute_count; i++){
+        printf("%20s", table->attributes[i].name);
+    }
+    printf("\n");
+    //print records
+    for( int i = 0; i<num_records; i++){
+        for( int j = 0; j<table->attribute_count; j++){
+            switch( table->attributes[j].type ){
+                case 0: //int
+                    printf("%20i", all_records[i][j].i);
+                    break;
+                case 1: //double
+                    printf("%20f", all_records[i][j].d);
+                    break;
+                case 2: //boolean
+                    printf("%20s", all_records[i][j].b ? "TRUE" : "FALSE");
+                    break;
+                case 3: //char
+                    printf("%20s", all_records[i][j].c);
+                    break;
+                case 4: //varchar
+                    printf("%20s", all_records[i][j].v);
+                    break;
+            }
+        }
+        printf("\n");
+    }
+    // free
+    for(int i = 0; i<num_records; i++){
+        free( all_records[i] );
+    }
+    free( all_records );
 }
