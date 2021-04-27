@@ -186,9 +186,8 @@ int parse_dml_query(char * query, union record_item *** result, catalogs* schema
         select_cmd* select = build_select( total, data, schemas );
         // exec
         if( select != NULL ){
-            record = execute_select( select, schemas );
+            execute_select( select, schemas );
         }
-        // print record
     }else{
         fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);
         return -1;
@@ -310,7 +309,7 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
                         command->attributes_to_select[current_attr] = realloc(command->attributes_to_select[current_attr], (strlen(names[1])+1)*sizeof(char));
                         strcpy(command->attributes_to_select[current_attr], names[1]);
                         command->selected[current_attr] = attr_loc;
-                        command->table_match[current_attr] = tab_idx;
+                        command->table_match[current_attr] = tables_to_select[tab_idx]->id;
                     }
                 }
             }
@@ -1018,19 +1017,25 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  * @return 2d array result with success and
        NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* select, catalogs* schemas ){
+void execute_select( select_cmd* select, catalogs* schemas ){
     int total = 0, rec_size = 0;
     union record_item** result_table = cartesian_product( select->num_tables,select->from_tables,&total,&rec_size, schemas );
     int* type_arr = type_array( select, schemas, rec_size );
 
-    //TODO: print header
+    // print header
+    print_header( select, schemas );
+    // update selected locs if wildcard wasn't used
+    if( !select->wildcard ){
+        update_select_locs( select, schemas );
+    }
+    // print contents
     for( int i = 0; i<total; i++ ){
         // check if record matches where condition
         if( check_where_statement( select->conditions, result_table[i], rec_size, select->from_tables, select->num_tables, schemas ) == 0 ){
             if( select->wildcard ){
                 print_record( result_table[i], rec_size, type_arr );
             }else{
-                print_selected( result_table[i], rec_size, type_ar, select, schemas );
+                print_selected( result_table[i], rec_size, type_arr, select, schemas );
             }
             printf("\n");
         }
@@ -1039,6 +1044,7 @@ union record_item** execute_select( select_cmd* select, catalogs* schemas ){
         free( result_table[i] );
     }
     free( result_table );
+    free( type_arr );
 }
 
 /*
@@ -1958,20 +1964,16 @@ void destory_insert( insert_cmd* insert ){
 }
 
 int* type_array( select_cmd* select, catalogs* schemas, int num_attributes ){
-    if(select->wildcard){
-        int* types = (int*)malloc(num_attributes*sizeof(int));
-        int c = 0;
-        for(int i = 0; i<select->num_tables; i++){
-            int attr_count = schemas->all_tables[select->from_tables[i]].attribute_count;
-            for(int j = 0; j<attr_count; j++){
-                types[c] = schemas->all_tables[select->from_tables[i]].attributes[j].type;
-                c++;
-            }
+    int* types = (int*)malloc(num_attributes*sizeof(int));
+    int c = 0;
+    for(int i = 0; i<select->num_tables; i++){
+        int attr_count = schemas->all_tables[select->from_tables[i]].attribute_count;
+        for(int j = 0; j<attr_count; j++){
+            types[c] = schemas->all_tables[select->from_tables[i]].attributes[j].type;
+            c++;
         }
-        return types;
-    }else{
-        return select->table_match;
     }
+    return types;
 }
 
 void print_table( table_catalog* table ){
@@ -2013,6 +2015,21 @@ void print_table( table_catalog* table ){
     free( all_records );
 }
 
+void print_header( select_cmd* select, catalogs* schemas ){
+    if( select->wildcard ){
+        for( int i = 0; i<select->num_tables; i++ ){
+            for( int j = 0; j<schemas->all_tables[select->from_tables[i]].attribute_count; j++ ){
+                printf("%10s", schemas->all_tables[select->from_tables[i]].attributes[j].name);
+            }
+        }
+    }else{// otherwise only print selected
+        for( int i = 0; i<select->num_attributes; i++){
+            printf("%10s", select->attributes_to_select[i]);
+        }
+    }
+    printf("\n");
+}
+
 void print_record( union record_item* record, int rec_size, int* type_arr ){
     for( int j = 0; j<rec_size; j++ ){
         int type = type_arr[j];
@@ -2036,13 +2053,16 @@ void print_record( union record_item* record, int rec_size, int* type_arr ){
     }
 }
 
-void print_selected( union record_item* record, int rec_size, int* type_arr, select_cmd* select, catalogs* schemas ){
+void update_select_locs( select_cmd* select, catalogs* schemas ){
     for( int i = 0; i<select->num_attributes; i++ ){
         int loc = 0;
         for( int j = 0; j<select->num_attributes && select->table_match[i] != select->from_tables[j]; j++ ){
-            select->selected[i] += schemas->all_tables[select->table_match[i]].attribute_count;
+            select->selected[i] += schemas->all_tables[select->from_tables[j]].attribute_count;
         }
     }
+}
+
+void print_selected( union record_item* record, int rec_size, int* type_arr, select_cmd* select, catalogs* schemas ){
     for( int j = 0; j<rec_size; j++ ){
         if( is_selected( select->selected, select->num_attributes, j) ){
             int type = type_arr[j];

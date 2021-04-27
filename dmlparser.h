@@ -210,7 +210,7 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  * @return 2d array result with success and
  		   NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* select, catalogs* schemas );
+void execute_select( select_cmd* select, catalogs* schemas );
 
 /*
  *
@@ -272,5 +272,7 @@ void print_table( table_catalog* table );
 void print_record( union record_item* record, int rec_size, int* type_array );
 void print_selected( union record_item* record, int rec_size, int* type_arr, select_cmd* select, catalogs* schemas );
 bool is_selected( int* selected, int num_selected, int attr_loc );
+void print_header( select_cmd* select, catalogs* schemas );
+void update_select_locs( select_cmd* select, catalogs* schemas );
 
 #endif
