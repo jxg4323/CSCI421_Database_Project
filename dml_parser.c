@@ -898,8 +898,21 @@ where_cmd* build_where( char** table_names, int num_tables, int token_count, cha
  * @parm: schemas - Array of table cataglogs
  * @return: 2d array of the resulting joins if no issues o.w. NULL
  */
-union record_item** cartesian_product( int num_tables, int* table_ids, catalogs* schemas ){
+union record_item** cartesian_product( int num_tables, int* table_ids, int *total_records, catalogs* schemas ){
+    union record_tem** cart;
+    int cart_size = 0;
+    if( num_tables == 1 ){
+        *total_records = get_records( schemas->all_tables[table_ids[0]].storage_manager_loc, &cart );
+        return cart;
+    }
+    for( int i = 0; i < num_tables; i++ ){
+        cart_size += schemas->all_tables[table_ids[i]].attribute_count;
+    }
+    cart = (union record_item**)malloc(sizeof(union record_item*));
+    for( int i = 0; i<num_tables; i++){
+        table_catalog* table = &(schemas->all_tables[table_ids[i]]);
 
+    }
 }
 
 /*
@@ -958,10 +971,12 @@ int check_where_statement( where_cmd* where, union record_item* record, int reco
  * @return 2d array result with success and
        NULL otherwise and print error statement
  */
-union record_item** execute_select( select_cmd* select, catalogs* shcemas ){}
+union record_item** execute_select( select_cmd* select, catalogs* shcemas ){
+    union record_item** result_table;
 
 
-// TODO: update the executions or builds to check that primary keys, and foreign keys aren't updated
+}
+
 /*
  * Insert the records in the command structure into the
  * designated table and if any errors occur on insert then
