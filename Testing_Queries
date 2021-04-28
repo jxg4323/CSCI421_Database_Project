@@ -1,0 +1,64 @@
+create table first( ID integer );
+
+alter table first add FURTHER boolean;
+
+create table Person(
+	ID integer notnull primarykey,
+	NAME varchar(100) notnull,
+	MAJOR varchar(255) notnull,
+	AGE integer,
+	primarykey( ID NAME )
+);
+
+
+create table sex(
+	SEXID integer notnull primarykey,
+	FAV_POSITION varchar(255) notnull,
+	PartnerName varchar(50) notnull,
+	primarykey( SEXID ),
+	foreignkey( PartnerName ) references Person( NAME )
+);
+
+create table Test(
+	ID integer notnull primarykey,
+	FURTHER varchar(100) notnull,
+	DUMBNESS integer primarykey,
+	primarykey( ID )
+);
+
+insert into Person values( 0 "James" "CompSci" 23 ),
+                         ( 1 "Kelsey" "Software" 21 ),
+                         ( 2 "Alex" "CompSci" 19 ),
+                         ( 3 "Varnit" "Engineer" 20);
+
+
+insert into Test values( 4 "somestuff" 1 ),
+					   ( 5 "others" 9 ),
+					   ( 18 "more things" 10 ),
+					   ( 9 "wishful" 8 );
+
+insert into sex values( 6 "doggy" "Marissa" ),
+					  ( 7 "reverse cowgirl" "Zoey"); 
+
+
+create table Funny(
+	FID integer notnull,
+	JOKE varchar(244) notnull,
+	LAUGHTER integer notnull,
+	primarykey( FID ),
+	unique( JOKE LAUGHTER )
+);
+
+
+alter table sex add ORGASM_COUNT integer default 5;
+alter table Person add LastName char(25) default "Green";
+
+
+Table Person:
+	ID	  Name    Age
+	0	  James   23
+	1     Kelsey  22
+	2     Alex    20
+	3     Varnit  20
+
+The storagemanager maintains array of struct pointers but on read even if one has been deleted the pointer is null but then read_table_metadata places values in what should be a NULL pointer
