@@ -133,7 +133,7 @@ int parse_dml_statement( char * statement, catalogs* schemas ){
         // exec
         if( insert != NULL ){
             res = execute_insert( insert,schemas );
-            print_table( &(schemas->all_tables[insert->table_id]) );
+            if( res >= 0 ){ printf("SUCCESS\n");}
         }
     }else if( strcasecmp(com_type, "update") == 0 ){
         if( (total = parser( statement, data, true )) < 0 ){ return -1; }
@@ -141,7 +141,7 @@ int parse_dml_statement( char * statement, catalogs* schemas ){
         // exec
         if( update != NULL ){
             res = execute_update( update, schemas );
-            print_table( &(schemas->all_tables[update->table_id]) );
+            if( res >= 0 ){ printf("SUCCESS\n");}
         }
     }else if( strcasecmp(com_type, "delete") == 0 ){
         if( (total = parser( statement, data, false )) < 0 ){ return -1; }
@@ -149,7 +149,7 @@ int parse_dml_statement( char * statement, catalogs* schemas ){
         // exec
         if( delete != NULL ){
             res = execute_delete( delete, schemas );
-            print_table( &(schemas->all_tables[delete->table_id]) );
+            if( res >= 0 ){ printf("SUCCESS\n");}
         }
     }else{
         fprintf(stderr, "ERROR: '%s' isn't a known command\n", data[0]);

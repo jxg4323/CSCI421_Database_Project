@@ -1,5 +1,5 @@
 #
-# Created by gmakemake (Ubuntu Jul 25 2014) on Wed Mar 10 10:17:59 2021
+# Created by gmakemake (Ubuntu Jul 25 2014) on Thu Apr 22 00:01:05 2021
 #
 
 #
@@ -50,13 +50,13 @@ CCLIBFLAGS =
 
 
 CPP_FILES =	
-C_FILES =	database.c ddl_parser.c storagemanager.c table_schema.c
+C_FILES =	database.c ddl_parser.c dml_parser.c storagemanager.c table_schema.c
 PS_FILES =	
 S_FILES =	
-H_FILES =	database.h database1.h ddl_parser.h ddlparse.h storagemanager.h tableschema.h
+H_FILES =	database.h database1.h ddl_parser.h ddlparse.h dml_parser.h dmlparser.h storagemanager.h tableschema.h
 SOURCEFILES =	$(H_FILES) $(CPP_FILES) $(C_FILES) $(S_FILES)
 .PRECIOUS:	$(SOURCEFILES)
-OBJFILES =	ddl_parser.o storagemanager.o table_schema.o 
+OBJFILES =	ddl_parser.o dml_parser.o storagemanager.o table_schema.o 
 
 #
 # Main targets
@@ -71,10 +71,11 @@ database:	database.o $(OBJFILES)
 # Dependencies
 #
 
-database.o:	
-ddl_parser.o:	database.h ddl_parser.h ddlparse.h tableschema.h
+database.o:	database.h database1.h ddl_parser.h ddlparse.h dml_parser.h dmlparser.h storagemanager.h tableschema.h
+ddl_parser.o:	database.h ddl_parser.h ddlparse.h dml_parser.h dmlparser.h storagemanager.h tableschema.h
+dml_parser.o:	database.h ddl_parser.h dml_parser.h dmlparser.h storagemanager.h tableschema.h
 storagemanager.o:	storagemanager.h
-table_schema.o:	tableschema.h
+table_schema.o:	storagemanager.h tableschema.h
 
 #
 # Housekeeping
