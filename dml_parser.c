@@ -345,19 +345,31 @@ select_cmd* build_select( int token_count, char** tokens, catalogs* schemas ){
     // build the orderby array
     if(isValid == true && orderby_idx >= 0){
         current_token = orderby_idx+1;
-        for(int i = 0; i < orderby_attrs; i++){
-            bool occurs = false;
-            for(int j = 0; j < num_attrs_to_select; j++){ // TODO: comeback and deal with wildcard
-                if(strcmp(tokens[current_token], command->attributes_to_select[j]) == 0){
-                    occurs = true;
-                    command->orderby[i] = realloc(command->orderby[i], (strlen(tokens[current_token])+1)*sizeof(char));
+        if( wildcard ){
+            for( int i = 0; i<orderby_attrs; i++ ){
+                int tab_id = 0;
+                int attrloc = find_attribute( command->from_tables, command->num_tables, &tab_id, tokens[current_token], schemas );
+                if( attrloc >= 0 ){
+                    command->orderby[i] = malloc((strlen(tokens[current_token])+1)*sizeof(char));
                     strcpy(command->orderby[i], tokens[current_token]);
                 }
+                current_token++;
             }
-            current_token++;
-            if(occurs == false){ 
-                fprintf(stderr, "ERROR: '%s' attribute wasn't in the select clause.\n", tokens[current_token]);
-                isValid = false; 
+        }else{
+            for(int i = 0; i < orderby_attrs; i++){
+                bool occurs = false;
+                for(int j = 0; j < num_attrs_to_select; j++){ // TODO: comeback and deal with wildcard
+                    if(strcmp(tokens[current_token], command->attributes_to_select[j]) == 0){
+                        occurs = true;
+                        command->orderby[i] = malloc((strlen(tokens[current_token])+1)*sizeof(char));
+                        strcpy(command->orderby[i], tokens[current_token]);
+                    }
+                }
+                current_token++;
+                if(occurs == false){ 
+                    fprintf(stderr, "ERROR: '%s' attribute wasn't in the select clause.\n", tokens[current_token]);
+                    isValid = false; 
+                }
             }
         }
     }
@@ -1028,17 +1040,49 @@ void execute_select( select_cmd* select, catalogs* schemas ){
     if( !select->wildcard ){
         update_select_locs( select, schemas );
     }
+    // check if order by
+    bool orderby_use = (select->num_orderby > 0) ? true : false;
+    union record_item** unordered;
+    int unordered_count = 0;
+    if( orderby_use ){
+        unordered = (union record_item **)malloc(1*sizeof(union record_item*));
+    }
     // print contents
     for( int i = 0; i<total; i++ ){
         // check if record matches where condition
         if( check_where_statement( select->conditions, result_table[i], rec_size, select->from_tables, select->num_tables, schemas ) == 0 ){
-            if( select->wildcard ){
-                print_record( result_table[i], rec_size, type_arr );
+            if( orderby_use ){
+                if( unordered_count > 0 ){
+                    unordered = (union record_item **)realloc(unordered,(unordered_count+1)*sizeof(union record_item**));
+                }
+                unordered[unordered_count] = (union record_item *)malloc(rec_size*sizeof(union record_item));
+                // copy record into unorder
+                for( int j = 0; j<rec_size; j++ ){
+                    unordered[unordered_count][j] = result_table[i][j];
+                }
+                unordered_count++;
             }else{
-                print_selected( result_table[i], rec_size, type_arr, select, schemas );
+                if( select->wildcard ){
+                    print_record( result_table[i], rec_size, type_arr );
+                }else{
+                    print_selected( result_table[i], rec_size, type_arr, select, schemas );
+                }
+                printf("\n");
+            }
+        }
+    }
+    if( orderby_use ){
+        orderby_sort( select, schemas, &unordered, unordered_count, rec_size, type_arr );
+        for( int i = 0; i<unordered_count; i++ ){
+            if( select->wildcard ){
+                print_record( unordered[i], rec_size, type_arr );
+            }else{
+                print_selected( unordered[i], rec_size, type_arr, select, schemas );
             }
             printf("\n");
+            free( unordered[i] );
         }
+        free( unordered );
     }
     for( int i = 0; i<total; i++){
         free( result_table[i] );
@@ -2096,4 +2140,45 @@ bool is_selected( int* selected, int num_selected, int attr_loc ){
         }
     }
     return result;
+}
+// Order by functions
+void orderby_sort( select_cmd* select, catalogs* schemas, union record_item*** unsorted, int num_records, int record_size, int* type_arr ){
+    union record_item** table = *unsorted;
+    int* orderby_attr = (int *)malloc(select->num_orderby*sizeof(int));
+    int* orderby_tabs = (int *)malloc(select->num_orderby*sizeof(int));
+    union record_item* tmp = malloc(record_size*sizeof(union record_item));
+    for(int i = 0; i<select->num_orderby; i++){
+        orderby_attr[i] = find_attribute( select->from_tables, select->num_tables, &(orderby_tabs[i]), select->orderby[i], schemas );
+        for( int j = 0; j<select->num_orderby && orderby_tabs[i] != select->from_tables[j]; j++ ){
+            orderby_attr[i] += schemas->all_tables[select->from_tables[j]].attribute_count;
+        }
+    }
+    // look over every record
+    for( int i = 0; i<num_records; i++ ){
+        // find lowest
+        for( int j = i+1; j<num_records; j++ ){
+            int check_count = 0;
+            for( int s = 0; s<select->num_orderby; s++ ){
+                int look = orderby_attr[s];
+                if( compare_condition( lt, type_arr[s], 255, table[i][look], table[j][look]) ){
+                    check_count++;
+                }
+            }
+            // if record is less than for every orderby attribute add to sorted
+            if( check_count == select->num_orderby ){
+                for( int t = 0; t<record_size; t++ ){
+                    tmp[t] = table[j][t];
+                }
+                for( int t = 0; t<record_size; t++ ){
+                    table[j][t] = table[i][t];
+                }
+                for( int t = 0; t<record_size; t++ ){
+                    table[i][t] = tmp[t];
+                }
+            }
+        }
+    }
+    free( tmp );
+    free( orderby_tabs );
+    free( orderby_attr );
 }

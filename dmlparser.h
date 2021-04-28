@@ -89,7 +89,7 @@ typedef struct select_cmd_struct{
 	bool wildcard;
 	int* from_tables; // if multiple perform cartesian product of tables to then act upon!!
 	where_cmd* conditions;
-	char** orderby; // TODO: add orderby
+	char** orderby; 
 } select_cmd;
 
 typedef struct insert_cmd_struct{
@@ -274,5 +274,6 @@ void print_selected( union record_item* record, int rec_size, int* type_arr, sel
 bool is_selected( int* selected, int num_selected, int attr_loc );
 void print_header( select_cmd* select, catalogs* schemas );
 void update_select_locs( select_cmd* select, catalogs* schemas );
-
+// Orderby Functions
+void orderby_sort( select_cmd* select, catalogs* schemas, union record_item*** unsorted, int num_records, int record_size, int* type_arr );
 #endif
